@@ -1,0 +1,23 @@
+{
+  "name": "arib-mesa-partes-prototipo-maestro",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test:logic": "node --test tests/workflow.test.mjs"
+  },
+  "dependencies": {
+    "@xyflow/react": "12.11.3",
+    "lucide-react": "1.41.0",
+    "motion": "13.1.1",
+    "react": "19.2.7",
+    "react-dom": "19.2.7"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "6.1.1",
+    "vite": "8.2.2"
+  }
+}
