@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { createVirtual,registerVirtual,issueProveido,observeAtOffice,correctObservation,completeOfficeStep,finalizeCase,validateWorkflowRoute,slaInfo,canDeleteOffice,canDeleteProcedure } from '../src/workflowEngine.js'
+import { createVirtual,registerVirtual,issueProveido,observeAtOffice,correctObservation,completeOfficeStep,finalizeCase,validateWorkflowRoute,slaInfo,canDeleteOffice,canDeleteProcedure,authenticate } from '../src/workflowEngine.js'
 import { procedureById } from '../src/data/catalogs.js'
 
 const base={procedureId:'const_biblioteca',ownerProfile:'estudiante',solicitante:'Demo',asunto:'Constancia',adjuntos:[],numeroFolios:1,fecha:'01/01/2026',hora:'08:00'}
@@ -67,4 +67,15 @@ test('no se puede eliminar una oficina u trámite en uso',()=>{
  assert.equal(canDeleteOffice('tesoreria',{items:[p],workflows:{}}),null)
  assert.ok(canDeleteProcedure('const_biblioteca',{items:[p]}))
  assert.equal(canDeleteProcedure('cert_modular',{items:[p]}),null)
+})
+
+test('authenticate valida usuario, contraseña y estado activo',()=>{
+ const users=[
+   {id:'u1',username:'2023100045',password:'70223344',active:true,role:'estudiante'},
+   {id:'u2',username:'inactivo',password:'123',active:false,role:'estudiante'},
+ ]
+ assert.equal(authenticate(users,'2023100045','70223344')?.id,'u1')
+ assert.equal(authenticate(users,'2023100045','clave-mala'),null)
+ assert.equal(authenticate(users,'inactivo','123'),null)
+ assert.equal(authenticate(users,'no-existe','x'),null)
 })

@@ -2,12 +2,13 @@ import React,{useState} from 'react'
 import { Plus, Pencil, Trash2, LockKeyhole } from 'lucide-react'
 import { Panel, Badge, Modal, Field } from '../components/ui'
 import ProcedureFormModal from '../components/ProcedureFormModal'
+import UserAdminView from './UserAdminView'
 import { officeName } from '../data/catalogs'
 
 const emptyOffice={name:'',short:'',color:'#0788d1'}
 
-export default function CatalogAdminView({offices,procedures,onSaveOffice,onDeleteOffice,onSaveProcedure,onDeleteProcedure}){
-  const [tab,setTab]=useState('oficinas')
+export default function CatalogAdminView({offices,procedures,users,onSaveOffice,onDeleteOffice,onSaveProcedure,onDeleteProcedure,onSaveUser,onDeleteUser,onResetPassword,onToggleUserActive,onImportStudents}){
+  const [tab,setTab]=useState('usuarios')
   const [officeModal,setOfficeModal]=useState(null)
   const [procModal,setProcModal]=useState(null)
 
@@ -15,10 +16,12 @@ export default function CatalogAdminView({offices,procedures,onSaveOffice,onDele
   const saveProcedure=data=>{onSaveProcedure(data);setProcModal(null)}
 
   return <div className="role-page">
-    <div className="hero-row"><div><span className="eyebrow">ADMINISTRACIÓN DE CATÁLOGOS</span><h1>Trámites y oficinas maestras</h1><p>Crea, edita o elimina oficinas y tipos de trámite disponibles en todo el sistema, sin tocar código.</p></div></div>
-    <div className="segmented"><button className={tab==='oficinas'?'active':''} onClick={()=>setTab('oficinas')}>Oficinas <i>{offices.length}</i></button><button className={tab==='tramites'?'active':''} onClick={()=>setTab('tramites')}>Trámites <i>{procedures.length}</i></button></div>
+    <div className="hero-row"><div><span className="eyebrow">ADMINISTRACIÓN</span><h1>Usuarios, oficinas y trámites</h1><p>Gestiona quién accede al sistema, con qué rol y oficina, y los catálogos maestros de trámites y oficinas.</p></div></div>
+    <div className="segmented"><button className={tab==='usuarios'?'active':''} onClick={()=>setTab('usuarios')}>Usuarios <i>{users.length}</i></button><button className={tab==='oficinas'?'active':''} onClick={()=>setTab('oficinas')}>Oficinas <i>{offices.length}</i></button><button className={tab==='tramites'?'active':''} onClick={()=>setTab('tramites')}>Trámites <i>{procedures.length}</i></button></div>
 
-    {tab==='oficinas'?
+    {tab==='usuarios'&&<UserAdminView users={users} offices={offices} onSaveUser={onSaveUser} onDeleteUser={onDeleteUser} onResetPassword={onResetPassword} onToggleActive={onToggleUserActive} onImportStudents={onImportStudents}/>}
+
+    {tab==='oficinas'&&
       <Panel title="Oficinas registradas" subtitle="Mesa de Partes y Dirección son fijas por regla institucional; no se pueden editar ni eliminar." actions={<button className="btn primary" onClick={()=>setOfficeModal({...emptyOffice})}><Plus size={16}/> Nueva oficina</button>}>
         <div className="table-wrap"><table><thead><tr><th>Oficina</th><th>Código</th><th>Color</th><th></th></tr></thead><tbody>
           {offices.map(o=>{const locked=['mesa_partes','direccion'].includes(o.id);return <tr key={o.id}>
@@ -27,7 +30,9 @@ export default function CatalogAdminView({offices,procedures,onSaveOffice,onDele
           </tr>})}
         </tbody></table></div>
       </Panel>
-    :
+    }
+
+    {tab==='tramites'&&
       <Panel title="Tipos de trámite" subtitle="Cada trámite define su ruta inicial de oficinas; Dirección puede ajustarla al emitir el proveído y el Diseñador de flujo puede versionarla después." actions={<button className="btn primary" onClick={()=>setProcModal({})}><Plus size={16}/> Nuevo trámite</button>}>
         <div className="table-wrap"><table><thead><tr><th>Trámite</th><th>Categoría</th><th>Requisitos</th><th>SLA</th><th>Ruta inicial</th><th></th></tr></thead><tbody>
           {procedures.map(p=><tr key={p.id}>

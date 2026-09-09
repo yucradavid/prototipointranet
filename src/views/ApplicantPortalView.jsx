@@ -5,13 +5,14 @@ import { PROGRAMS, CONDITIONS, procedureById } from '../data/catalogs'
 
 const defaultForm={procedureId:'const_biblioteca',solicitante:'Juan Carlos Mamani',condicion:'Estudiante',programa:PROGRAMS[0],dni:'70223344',celular:'965432100',correo:'juan.demo@correo.pe',direccion:'Ichuña, Moquegua',fundamento:'',numeroFolios:1,adjuntos:[]}
 
-export default function ApplicantPortalView({profileId,items,procedures,onCreateVirtual,onCorrect}){
-  const [open,setOpen]=useState(false),[selectedId,setSelectedId]=useState(null),[search,setSearch]=useState(''),[form,setForm]=useState({...defaultForm,condicion:profileId==='docente'?'Docente':'Estudiante',solicitante:profileId==='docente'?'Rosa Yana Condori':'Juan Carlos Mamani'})
-  const mine=useMemo(()=>items.filter(x=>x.ownerProfile===profileId).filter(x=>`${x.numero||x.tracking} ${x.asunto} ${x.estado}`.toLowerCase().includes(search.toLowerCase())),[items,profileId,search])
+export default function ApplicantPortalView({profileId,items,procedures,currentUser,onCreateVirtual,onCorrect}){
+  const initialForm=()=>({...defaultForm,condicion:profileId==='docente'?'Docente':'Estudiante',solicitante:currentUser?.fullName||(profileId==='docente'?'Rosa Yana Condori':'Juan Carlos Mamani'),dni:currentUser?.dni||defaultForm.dni,programa:currentUser?.carrera||defaultForm.programa})
+  const [open,setOpen]=useState(false),[selectedId,setSelectedId]=useState(null),[search,setSearch]=useState(''),[form,setForm]=useState(initialForm)
+  const mine=useMemo(()=>items.filter(x=>currentUser?x.ownerUserId===currentUser.id:x.ownerProfile===profileId).filter(x=>`${x.numero||x.tracking} ${x.asunto} ${x.estado}`.toLowerCase().includes(search.toLowerCase())),[items,profileId,currentUser,search])
   const selected=items.find(x=>x.id===selectedId)||mine[0]
   const obs=mine.filter(x=>x.estado==='OBSERVADO').length,finalized=mine.filter(x=>x.estado==='FINALIZADO').length
   const chooseFiles=e=>setForm(f=>({...f,adjuntos:[...f.adjuntos,...[...e.target.files].map(x=>({name:x.name,size:`${Math.max(1,Math.round(x.size/1024))} KB`}))]}))
-  const submit=()=>{const p=procedureById(form.procedureId);if(!form.fundamento.trim())return;onCreateVirtual({...form,asunto:p.name,ownerProfile:profileId});setOpen(false);setForm({...defaultForm,condicion:profileId==='docente'?'Docente':'Estudiante',solicitante:profileId==='docente'?'Rosa Yana Condori':'Juan Carlos Mamani'})}
+  const submit=()=>{const p=procedureById(form.procedureId);if(!form.fundamento.trim())return;onCreateVirtual({...form,asunto:p.name,ownerProfile:profileId,ownerUserId:currentUser?.id||null});setOpen(false);setForm(initialForm())}
   const correct=(exp)=>{const file={name:'Subsanacion.pdf',size:'420 KB'};onCorrect(exp,{files:[file]})}
   const downloadRespuesta=(exp)=>{const blob=new Blob([`Respuesta oficial\r\nExpediente: ${exp.numero}\r\nAsunto: ${exp.asunto}\r\nSolicitante: ${exp.solicitante}\r\nFecha: ${exp.fecha}\r\n\r\n${exp.respuesta}`],{type:'text/plain;charset=utf-8'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=exp.documentoRespuesta||`Respuesta_${exp.numero}.txt`;a.click()}
   return <div className="role-page">

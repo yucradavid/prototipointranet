@@ -103,3 +103,9 @@ export function canDeleteProcedure(procedureId,{items=[]}={}){
   if(items.some(x=>x.procedureId===procedureId)) return 'El trámite tiene expedientes registrados y no puede eliminarse.'
   return null
 }
+
+export function authenticate(users,username,password){
+  const u=(users||[]).find(x=>x.username===username&&x.password===password)
+  if(!u||u.active===false) return null
+  return u
+}

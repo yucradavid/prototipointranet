@@ -12,20 +12,23 @@ import BookAuditView from './views/BookAuditView'
 import TrackingView from './views/TrackingView'
 import LoginView from './views/LoginView'
 import { slugify, setOfficesCatalog, setProceduresCatalog, officeName } from './data/catalogs'
-import { loadExpedientes,saveExpedientes,loadWorkflows,saveWorkflows,loadOffices,saveOffices,loadProcedures,saveProcedures,resetAll,nextNumero } from './repositories/prototypeRepository'
-import { createVirtual,registerVirtual,createPhysical,issueProveido,observeAtOffice,correctObservation,completeOfficeStep,finalizeCase,validateWorkflowRoute,slaInfo,canDeleteOffice,canDeleteProcedure } from './workflowEngine'
+import { parseStudentsCsv } from './data/userImport'
+import { loadExpedientes,saveExpedientes,loadWorkflows,saveWorkflows,loadOffices,saveOffices,loadProcedures,saveProcedures,loadUsers,saveUsers,resetAll,nextNumero } from './repositories/prototypeRepository'
+import { createVirtual,registerVirtual,createPhysical,issueProveido,observeAtOffice,correctObservation,completeOfficeStep,finalizeCase,validateWorkflowRoute,slaInfo,canDeleteOffice,canDeleteProcedure,authenticate } from './workflowEngine'
 
 const today=()=>new Intl.DateTimeFormat('es-PE',{day:'2-digit',month:'2-digit',year:'numeric'}).format(new Date())
 const time=()=>new Date().toLocaleTimeString('es-PE',{hour:'2-digit',minute:'2-digit',hour12:false})
 
 export default function App(){
   const [loggedIn,setLoggedIn]=useState(false)
+  const [currentUser,setCurrentUser]=useState(null)
   const [profileId,setProfileId]=useState('admin'),[officeId,setOfficeId]=useState('biblioteca'),[activeView,setActiveView]=useState('control')
   const [items,setItems]=useState(()=>loadExpedientes()),[workflows,setWorkflows]=useState(()=>loadWorkflows()),[toast,setToast]=useState({message:'',type:'success'})
-  const [offices,setOffices]=useState(()=>loadOffices()),[procedures,setProcedures]=useState(()=>loadProcedures())
+  const [offices,setOffices]=useState(()=>loadOffices()),[procedures,setProcedures]=useState(()=>loadProcedures()),[users,setUsers]=useState(()=>loadUsers())
   useEffect(()=>saveExpedientes(items),[items]);useEffect(()=>saveWorkflows(workflows),[workflows])
   useEffect(()=>{saveOffices(offices);setOfficesCatalog(offices)},[offices])
   useEffect(()=>{saveProcedures(procedures);setProceduresCatalog(procedures)},[procedures])
+  useEffect(()=>saveUsers(users),[users])
   const notify=(message,type='success')=>{setToast({message,type});clearTimeout(window.__aribToast);window.__aribToast=setTimeout(()=>setToast({message:'',type}),2600)}
   const update=(id,fn)=>{let result;setItems(curr=>curr.map(x=>{if(x.id!==id)return x;try{result=fn(x);return result}catch(err){notify(err.message,'error');return x}}));return result}
   const onCreateVirtual=data=>{const tracking=`SOL-ARIB-${String(Date.now()).slice(-5)}`;const exp=createVirtual({...data,fecha:today(),hora:time()},tracking,time());setItems(c=>[exp,...c]);notify(`Solicitud enviada con código ${tracking}`);return exp}
@@ -77,7 +80,40 @@ export default function App(){
     return true
   }
 
-  const reset=()=>{if(!confirm('¿Restaurar todos los datos del prototipo?'))return;const r=resetAll();setItems(r.expedientes);setWorkflows(r.workflows);setOffices(r.offices);setProcedures(r.procedures);setProfileId('admin');setActiveView('control');notify('Prototipo restaurado')}
+  const onSaveUser=data=>{
+    const isNew=!data.id
+    if(isNew&&users.some(u=>u.username===data.username)){notify('Ya existe un usuario con ese nombre de usuario.','error');return null}
+    const id=data.id||`user-${Date.now()}`
+    const user={id,username:data.username.trim(),password:data.password,fullName:data.fullName.trim(),role:data.role,office:data.office||null,dni:data.dni||'',codigo:data.codigo||'',anioIngreso:data.anioIngreso||'',carrera:data.carrera||'',active:data.active!==false}
+    setUsers(curr=>isNew?[...curr,user]:curr.map(u=>u.id===id?user:u))
+    if(currentUser?.id===id)setCurrentUser(user)
+    notify(isNew?'Usuario creado':'Usuario actualizado')
+    return id
+  }
+  const onDeleteUser=id=>{
+    if(!confirm('¿Eliminar este usuario?'))return
+    setUsers(curr=>curr.filter(u=>u.id!==id))
+    if(currentUser?.id===id)setCurrentUser(null)
+    notify('Usuario eliminado')
+  }
+  const onResetPassword=(id,newPassword)=>{setUsers(curr=>curr.map(u=>u.id===id?{...u,password:newPassword}:u));notify('Contraseña actualizada')}
+  const onToggleUserActive=id=>{setUsers(curr=>curr.map(u=>u.id===id?{...u,active:!(u.active!==false)}:u));notify('Estado del usuario actualizado')}
+  const onImportStudents=text=>{
+    const {rows,errors}=parseStudentsCsv(text)
+    const skipped=[...errors]
+    const created=[]
+    const existingCodes=new Set(users.map(u=>u.username))
+    rows.forEach(r=>{
+      if(existingCodes.has(r.codigo)){skipped.push(`Código ${r.codigo} ya existe, se omitió.`);return}
+      const user={id:`user-${r.codigo}-${Date.now()}`,username:r.codigo,password:r.dni,fullName:r.fullName,role:'estudiante',office:null,dni:r.dni,codigo:r.codigo,anioIngreso:r.anioIngreso,carrera:r.carrera,active:true}
+      created.push(user);existingCodes.add(r.codigo)
+    })
+    if(created.length)setUsers(curr=>[...curr,...created])
+    notify(created.length?`${created.length} estudiante(s) importados`:'No se importó ningún estudiante',created.length?'success':'error')
+    return {created,skipped}
+  }
+
+  const reset=()=>{if(!confirm('¿Restaurar todos los datos del prototipo?'))return;const r=resetAll();setItems(r.expedientes);setWorkflows(r.workflows);setOffices(r.offices);setProcedures(r.procedures);setUsers(r.users);setCurrentUser(null);setProfileId('admin');setActiveView('control');notify('Prototipo restaurado')}
 
   const alerts=useMemo(()=>{
     if(profileId==='admin') return [
@@ -90,17 +126,27 @@ export default function App(){
     ]
     if(profileId==='direccion') return items.filter(x=>x.estado==='EN_DIRECCION').map(x=>`EXP ${x.numero} pendiente de proveído`)
     if(profileId==='oficina') return items.filter(x=>['EN_OFICINA','OBSERVADO'].includes(x.estado)&&x.oficinaActual===officeId).map(x=>`EXP ${x.numero} en bandeja de ${officeName(officeId)}`)
-    if(profileId==='estudiante'||profileId==='docente') return items.filter(x=>x.ownerProfile===profileId&&x.estado==='OBSERVADO').map(x=>`${x.numero?`EXP ${x.numero}`:x.tracking} requiere subsanación`)
+    if(profileId==='estudiante'||profileId==='docente') return items.filter(x=>(currentUser?x.ownerUserId===currentUser.id:x.ownerProfile===profileId)&&x.estado==='OBSERVADO').map(x=>`${x.numero?`EXP ${x.numero}`:x.tracking} requiere subsanación`)
     return []
-  },[items,profileId,officeId])
+  },[items,profileId,officeId,currentUser])
 
   let content
-  if(profileId==='estudiante'||profileId==='docente') content=activeView==='tracking'?<TrackingView items={items}/>:<ApplicantPortalView profileId={profileId} items={items} procedures={procedures} onCreateVirtual={onCreateVirtual} onCorrect={onCorrect}/>
+  if(profileId==='estudiante'||profileId==='docente') content=activeView==='tracking'?<TrackingView items={items}/>:<ApplicantPortalView profileId={profileId} items={items} procedures={procedures} currentUser={currentUser} onCreateVirtual={onCreateVirtual} onCorrect={onCorrect}/>
   else if(profileId==='secretaria') content=activeView==='book'?<BookAuditView items={items}/>:activeView==='tracking'?<TrackingView items={items}/>:<SecretariaWorkbenchView items={items} procedures={procedures} onRegisterVirtual={onRegisterVirtual} onCreatePhysical={onCreatePhysical} onFinalize={onFinalize}/>
   else if(profileId==='direccion') content=activeView==='tracking'?<TrackingView items={items}/>:<DireccionWorkbenchView items={items} workflows={workflows} offices={offices} onProveido={onProveido}/>
   else if(profileId==='oficina') content=activeView==='tracking'?<TrackingView items={items}/>:<OfficeWorkbenchView officeId={officeId} items={items} onObserve={onObserve} onComplete={onComplete}/>
-  else content=activeView==='workflow'?<WorkflowAdminView workflows={workflows} offices={offices} procedures={procedures} onPublish={onPublishWorkflow} onSaveProcedure={onSaveProcedure} onDeleteProcedure={onDeleteProcedure}/>:activeView==='catalog'?<CatalogAdminView offices={offices} procedures={procedures} onSaveOffice={onSaveOffice} onDeleteOffice={onDeleteOffice} onSaveProcedure={onSaveProcedure} onDeleteProcedure={onDeleteProcedure}/>:activeView==='book'?<BookAuditView items={items}/>:activeView==='tracking'?<TrackingView items={items}/>:<AdminControlView items={items} offices={offices} setActiveView={setActiveView}/>
-  const login=(id)=>{setProfileId(id);setActiveView(id==='admin'?'control':id==='estudiante'||id==='docente'?'portal':'work');setLoggedIn(true)}
-  if(!loggedIn)return <LoginView onLogin={login}/>
-  return <><AppShell profileId={profileId} setProfileId={setProfileId} officeId={officeId} setOfficeId={setOfficeId} offices={offices} activeView={activeView} setActiveView={setActiveView} alerts={alerts} onReset={reset} onLogout={()=>setLoggedIn(false)}>{content}</AppShell><Toast message={toast.message} type={toast.type}/></>
+  else content=activeView==='workflow'?<WorkflowAdminView workflows={workflows} offices={offices} procedures={procedures} onPublish={onPublishWorkflow} onSaveProcedure={onSaveProcedure} onDeleteProcedure={onDeleteProcedure}/>:activeView==='catalog'?<CatalogAdminView offices={offices} procedures={procedures} users={users} onSaveOffice={onSaveOffice} onDeleteOffice={onDeleteOffice} onSaveProcedure={onSaveProcedure} onDeleteProcedure={onDeleteProcedure} onSaveUser={onSaveUser} onDeleteUser={onDeleteUser} onResetPassword={onResetPassword} onToggleUserActive={onToggleUserActive} onImportStudents={onImportStudents}/>:activeView==='book'?<BookAuditView items={items}/>:activeView==='tracking'?<TrackingView items={items}/>:<AdminControlView items={items} offices={offices} setActiveView={setActiveView}/>
+
+  const login=(id)=>{setCurrentUser(null);setProfileId(id);setActiveView(id==='admin'?'control':id==='estudiante'||id==='docente'?'portal':'work');setLoggedIn(true)}
+  const onCredentialLogin=(username,password)=>{
+    const user=authenticate(users,username,password)
+    if(!user)return false
+    setCurrentUser(user);setProfileId(user.role);if(user.office)setOfficeId(user.office)
+    setActiveView(user.role==='admin'?'control':user.role==='estudiante'||user.role==='docente'?'portal':'work')
+    setLoggedIn(true)
+    return true
+  }
+  const onLogout=()=>{setLoggedIn(false);setCurrentUser(null)}
+  if(!loggedIn)return <LoginView onLogin={login} onCredentialLogin={onCredentialLogin}/>
+  return <><AppShell profileId={profileId} setProfileId={setProfileId} officeId={officeId} setOfficeId={setOfficeId} offices={offices} currentUser={currentUser} activeView={activeView} setActiveView={setActiveView} alerts={alerts} onReset={reset} onLogout={onLogout}>{content}</AppShell><Toast message={toast.message} type={toast.type}/></>
 }
