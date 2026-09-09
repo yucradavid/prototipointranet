@@ -1,6 +1,6 @@
 import React from 'react'
 import { Building2, GraduationCap, UserRound, Inbox, ShieldCheck, Workflow, LayoutGrid, BookOpen, Search, RotateCcw, ChevronDown, Bell, Menu, X } from 'lucide-react'
-import { PROFILES, officeName } from '../data/catalogs'
+import { PROFILES, officeName, roleLabel } from '../data/catalogs'
 
 const iconMap={estudiante:GraduationCap,docente:UserRound,secretaria:Inbox,direccion:Building2,oficina:Building2,admin:ShieldCheck}
 
@@ -33,7 +33,7 @@ export default function AppShell({profileId,setProfileId,officeId,setOfficeId,of
             <div className="notif-panel-list">{alerts.length?alerts.slice(0,8).map((a,i)=><div className="notif-row" key={i}>{a}</div>):<div className="notif-empty">Sin alertas pendientes.</div>}</div>
           </div>}
         </div>
-        {currentUser?<div className="profile-switch locked"><Icon size={18}/><span>{PROFILES.find(p=>p.id===currentUser.role)?.label||currentUser.role}</span></div>
+        {currentUser?<div className="profile-switch locked"><Icon size={18}/><span>{roleLabel(currentUser)}</span></div>
         :<div className="profile-switch"><Icon size={18}/><select value={profileId} onChange={e=>{setProfileId(e.target.value);setActiveView(e.target.value==='admin'?'control':e.target.value==='estudiante'||e.target.value==='docente'?'portal':'work')}}>{PROFILES.map(p=><option value={p.id} key={p.id}>{p.label}</option>)}</select><ChevronDown size={15}/></div>}
       </div></header>
       {showManualOfficeSelect&&<div className="office-context"><span>Oficina operativa para la demo:</span><select value={officeId} onChange={e=>setOfficeId(e.target.value)}>{officeOptions.map(o=><option value={o.id} key={o.id}>{o.name}</option>)}</select><small>En producción se obtiene del usuario autenticado; no se selecciona manualmente.</small></div>}

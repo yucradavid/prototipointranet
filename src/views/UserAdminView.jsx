@@ -2,10 +2,8 @@ import React,{useState} from 'react'
 import { Plus, Pencil, Trash2, KeyRound, Power, Download, UploadCloud, Search } from 'lucide-react'
 import { Panel, Badge, Modal } from '../components/ui'
 import UserFormModal from '../components/UserFormModal'
-import { PROFILES, officeName } from '../data/catalogs'
+import { officeName, roleLabel } from '../data/catalogs'
 import { parseStudentsCsv, buildStudentsTemplateCsv, buildCredentialsCsv } from '../data/userImport'
-
-const roleLabel=id=>PROFILES.find(p=>p.id===id)?.label||id
 
 function downloadText(filename,text){
   const a=document.createElement('a')
@@ -43,7 +41,7 @@ export default function UserAdminView({users,offices,onSaveUser,onDeleteUser,onR
         {rows.map(u=><tr key={u.id}>
           <td><b>{u.fullName}</b>{u.codigo?<><br/><span>{u.codigo}</span></>:null}</td>
           <td>{u.username}</td>
-          <td>{roleLabel(u.role)}</td>
+          <td>{roleLabel(u)}</td>
           <td>{u.office?officeName(u.office):'—'}</td>
           <td><Badge tone={u.active!==false?'success':'neutral'}>{u.active!==false?'Activo':'Inactivo'}</Badge></td>
           <td><div style={{display:'flex',gap:6}}>

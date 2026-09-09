@@ -43,4 +43,8 @@ export const CONDITIONS = ['Estudiante','Egresado','Docente','Administrativo','P
 export const officeById = id => OFFICES.find(x=>x.id===id)
 export const procedureById = id => PROCEDURES.find(x=>x.id===id)
 export const officeName = id => officeById(id)?.name || id || '—'
+// Rol legible para mostrar en UI: para 'oficina' usa la oficina asignada
+// (ej. "Encargado de Tesorería") en vez del genérico "Oficina destino",
+// para que cada oficina se sienta como un rol propio sin crear un PROFILES nuevo por oficina.
+export const roleLabel = user => user?.role==='oficina'&&user?.office ? `Encargado de ${officeName(user.office)}` : (PROFILES.find(p=>p.id===user?.role)?.label || user?.role || '—')
 export const slugify = s => String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'') || `item_${Date.now()}`
