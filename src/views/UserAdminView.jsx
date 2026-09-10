@@ -19,7 +19,7 @@ export default function UserAdminView({users,offices,onSaveUser,onDeleteUser,onR
   const [importFile,setImportFile]=useState(null)
   const [importResult,setImportResult]=useState(null)
 
-  const rows=users.filter(u=>`${u.fullName} ${u.username} ${u.dni} ${u.codigo}`.toLowerCase().includes(search.toLowerCase()))
+  const rows=users.filter(u=>`${u.fullName} ${u.username} ${u.email} ${u.dni} ${u.codigo}`.toLowerCase().includes(search.toLowerCase()))
 
   const resetPassword=u=>{
     const next=prompt(`Nueva contraseña para ${u.fullName}:`,u.password)
@@ -37,10 +37,11 @@ export default function UserAdminView({users,offices,onSaveUser,onDeleteUser,onR
 
   return <>
     <Panel title="Usuarios del sistema" subtitle="Cada usuario accede con su propio usuario y contraseña, según el rol y oficina que le asignes." actions={<div style={{display:'flex',gap:8,alignItems:'center'}}><div className="search-mini"><Search size={15}/><input placeholder="Buscar…" value={search} onChange={e=>setSearch(e.target.value)}/></div><button className="btn soft" onClick={()=>setImportOpen(true)}><UploadCloud size={15}/> Importar estudiantes</button><button className="btn primary" onClick={()=>setUserModal({})}><Plus size={16}/> Nuevo usuario</button></div>}>
-      <div className="table-wrap"><table><thead><tr><th>Nombre</th><th>Usuario</th><th>Rol</th><th>Oficina</th><th>Estado</th><th></th></tr></thead><tbody>
+      <div className="table-wrap"><table><thead><tr><th>Nombre</th><th>Usuario</th><th>Correo (Google)</th><th>Rol</th><th>Oficina</th><th>Estado</th><th></th></tr></thead><tbody>
         {rows.map(u=><tr key={u.id}>
           <td><b>{u.fullName}</b>{u.codigo?<><br/><span>{u.codigo}</span></>:null}</td>
           <td>{u.username}</td>
+          <td>{u.email||'—'}</td>
           <td>{roleLabel(u)}</td>
           <td>{u.office?officeName(u.office):'—'}</td>
           <td><Badge tone={u.active!==false?'success':'neutral'}>{u.active!==false?'Activo':'Inactivo'}</Badge></td>

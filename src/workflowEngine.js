@@ -109,3 +109,21 @@ export function authenticate(users,username,password){
   if(!u||u.active===false) return null
   return u
 }
+
+export function authenticateByEmail(users,email){
+  const clean=String(email||'').trim().toLowerCase()
+  if(!clean) return null
+  const u=(users||[]).find(x=>String(x.email||'').toLowerCase()===clean)
+  if(!u||u.active===false) return null
+  return u
+}
+
+export function redirectToOffice(exp,{officeId,note},time){
+  if(exp.estado!=='EN_OFICINA') throw new Error('Solo se puede redirigir un expediente en atención.')
+  if(!officeId) throw new Error('Selecciona la oficina de destino.')
+  const current=exp.oficinaActual
+  if(officeId===current) throw new Error('Selecciona una oficina distinta a la actual.')
+  const insertAt=exp.routeIndex+1
+  const routePlan=[...exp.routePlan.slice(0,insertAt),officeId,...exp.routePlan.slice(insertAt)]
+  return {...exp,oficinaActual:officeId,routePlan,routeIndex:insertAt,historial:[...exp.historial,event(officeName(current),'Redirección',`${note?.trim()||'Derivación manual fuera de la ruta programada.'} Redirigido a ${officeName(officeId)}.`,time)]}
+}

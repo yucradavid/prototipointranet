@@ -14,7 +14,7 @@ import LoginView from './views/LoginView'
 import { slugify, setOfficesCatalog, setProceduresCatalog, officeName } from './data/catalogs'
 import { parseStudentsCsv } from './data/userImport'
 import { loadExpedientes,saveExpedientes,loadWorkflows,saveWorkflows,loadOffices,saveOffices,loadProcedures,saveProcedures,loadUsers,saveUsers,resetAll,nextNumero } from './repositories/prototypeRepository'
-import { createVirtual,registerVirtual,createPhysical,issueProveido,observeAtOffice,correctObservation,completeOfficeStep,finalizeCase,validateWorkflowRoute,slaInfo,canDeleteOffice,canDeleteProcedure,authenticate } from './workflowEngine'
+import { createVirtual,registerVirtual,createPhysical,issueProveido,observeAtOffice,correctObservation,completeOfficeStep,finalizeCase,validateWorkflowRoute,slaInfo,canDeleteOffice,canDeleteProcedure,authenticate,authenticateByEmail,redirectToOffice } from './workflowEngine'
 
 const today=()=>new Intl.DateTimeFormat('es-PE',{day:'2-digit',month:'2-digit',year:'numeric'}).format(new Date())
 const time=()=>new Date().toLocaleTimeString('es-PE',{hour:'2-digit',minute:'2-digit',hour12:false})
@@ -30,15 +30,23 @@ export default function App(){
   useEffect(()=>{saveProcedures(procedures);setProceduresCatalog(procedures)},[procedures])
   useEffect(()=>saveUsers(users),[users])
   const notify=(message,type='success')=>{setToast({message,type});clearTimeout(window.__aribToast);window.__aribToast=setTimeout(()=>setToast({message:'',type}),2600)}
-  const update=(id,fn)=>{let result;setItems(curr=>curr.map(x=>{if(x.id!==id)return x;try{result=fn(x);return result}catch(err){notify(err.message,'error');return x}}));return result}
+  const update=(id,fn)=>{
+    const target=items.find(x=>x.id===id)
+    if(!target)return null
+    let result
+    try{result=fn(target)}catch(err){notify(err.message,'error');return null}
+    setItems(curr=>curr.map(x=>x.id===id?result:x))
+    return result
+  }
   const onCreateVirtual=data=>{const tracking=`SOL-ARIB-${String(Date.now()).slice(-5)}`;const exp=createVirtual({...data,fecha:today(),hora:time()},tracking,time());setItems(c=>[exp,...c]);notify(`Solicitud enviada con código ${tracking}`);return exp}
-  const onRegisterVirtual=exp=>{const n=nextNumero(items);update(exp.id,x=>registerVirtual(x,n,time()));notify(`Expediente ${n} registrado y enviado a Dirección`)}
-  const onCreatePhysical=data=>{const n=nextNumero(items);try{const exp=createPhysical({...data,fecha:today(),hora:time()},n,time());setItems(c=>[exp,...c]);notify(`Expediente físico ${n} registrado y remitido a Dirección`)}catch(err){notify(err.message,'error')}}
+  const onRegisterVirtual=exp=>{const n=nextNumero(items);const result=update(exp.id,x=>registerVirtual(x,n,time()));if(result)notify(`Expediente ${n} registrado y enviado a Dirección`);return result}
+  const onCreatePhysical=data=>{const n=nextNumero(items);try{const exp=createPhysical({...data,fecha:today(),hora:time()},n,time());setItems(c=>[exp,...c]);notify(`Expediente físico ${n} registrado y remitido a Dirección`);return exp}catch(err){notify(err.message,'error');return null}}
   const onProveido=(exp,payload)=>{update(exp.id,x=>issueProveido(x,payload,time()));notify(`Proveído emitido. Ruta activada para EXP ${exp.numero}`)}
   const onObserve=(exp,payload)=>{update(exp.id,x=>observeAtOffice(x,payload,time()));notify(`Observación enviada al solicitante`)}
   const onCorrect=(exp,payload)=>{update(exp.id,x=>correctObservation(x,payload,time()));notify(`Subsanación registrada y devuelta a la oficina observadora`)}
   const onComplete=(exp,payload)=>{const result=update(exp.id,x=>completeOfficeStep(x,payload,time()));if(result)notify(result.estado==='RESPUESTA_MESA'?'Ruta completada; expediente devuelto a Mesa de Partes':`Paso completado; expediente enviado al siguiente punto`)}
   const onFinalize=exp=>{update(exp.id,x=>finalizeCase(x,time()));notify(`EXP ${exp.numero} finalizado`)}
+  const onRedirect=(exp,payload)=>{update(exp.id,x=>redirectToOffice(x,payload,time()));notify(`Expediente redirigido a otra oficina`)}
   const onPublishWorkflow=(procedureId,route)=>{setWorkflows(w=>({...w,[procedureId]:{...(w[procedureId]||{}),route:[...route],version:(w[procedureId]?.version||0)+1,status:'PUBLICADO',updatedAt:'Ahora'}}));notify('Nueva versión de ruta publicada')}
 
   const onSaveOffice=data=>{
@@ -84,7 +92,7 @@ export default function App(){
     const isNew=!data.id
     if(isNew&&users.some(u=>u.username===data.username)){notify('Ya existe un usuario con ese nombre de usuario.','error');return null}
     const id=data.id||`user-${Date.now()}`
-    const user={id,username:data.username.trim(),password:data.password,fullName:data.fullName.trim(),role:data.role,office:data.office||null,dni:data.dni||'',codigo:data.codigo||'',anioIngreso:data.anioIngreso||'',carrera:data.carrera||'',active:data.active!==false}
+    const user={id,username:data.username.trim(),password:data.password,email:(data.email||`${data.username}@arib.edu.pe`).trim(),fullName:data.fullName.trim(),role:data.role,office:data.office||null,dni:data.dni||'',codigo:data.codigo||'',anioIngreso:data.anioIngreso||'',carrera:data.carrera||'',active:data.active!==false}
     setUsers(curr=>isNew?[...curr,user]:curr.map(u=>u.id===id?user:u))
     if(currentUser?.id===id)setCurrentUser(user)
     notify(isNew?'Usuario creado':'Usuario actualizado')
@@ -105,7 +113,7 @@ export default function App(){
     const existingCodes=new Set(users.map(u=>u.username))
     rows.forEach(r=>{
       if(existingCodes.has(r.codigo)){skipped.push(`Código ${r.codigo} ya existe, se omitió.`);return}
-      const user={id:`user-${r.codigo}-${Date.now()}`,username:r.codigo,password:r.dni,fullName:r.fullName,role:'estudiante',office:null,dni:r.dni,codigo:r.codigo,anioIngreso:r.anioIngreso,carrera:r.carrera,active:true}
+      const user={id:`user-${r.codigo}-${Date.now()}`,username:r.codigo,password:r.dni,email:`${r.codigo}@arib.edu.pe`,fullName:r.fullName,role:'estudiante',office:null,dni:r.dni,codigo:r.codigo,anioIngreso:r.anioIngreso,carrera:r.carrera,active:true}
       created.push(user);existingCodes.add(r.codigo)
     })
     if(created.length)setUsers(curr=>[...curr,...created])
@@ -134,19 +142,28 @@ export default function App(){
   if(profileId==='estudiante'||profileId==='docente') content=activeView==='tracking'?<TrackingView items={items}/>:<ApplicantPortalView profileId={profileId} items={items} procedures={procedures} currentUser={currentUser} onCreateVirtual={onCreateVirtual} onCorrect={onCorrect}/>
   else if(profileId==='secretaria') content=activeView==='book'?<BookAuditView items={items}/>:activeView==='tracking'?<TrackingView items={items}/>:<SecretariaWorkbenchView items={items} procedures={procedures} onRegisterVirtual={onRegisterVirtual} onCreatePhysical={onCreatePhysical} onFinalize={onFinalize}/>
   else if(profileId==='direccion') content=activeView==='tracking'?<TrackingView items={items}/>:<DireccionWorkbenchView items={items} workflows={workflows} offices={offices} onProveido={onProveido}/>
-  else if(profileId==='oficina') content=activeView==='tracking'?<TrackingView items={items}/>:<OfficeWorkbenchView officeId={officeId} items={items} onObserve={onObserve} onComplete={onComplete}/>
+  else if(profileId==='oficina') content=activeView==='tracking'?<TrackingView items={items}/>:<OfficeWorkbenchView officeId={officeId} items={items} offices={offices} onObserve={onObserve} onComplete={onComplete} onRedirect={onRedirect}/>
   else content=activeView==='workflow'?<WorkflowAdminView workflows={workflows} offices={offices} procedures={procedures} onPublish={onPublishWorkflow} onSaveProcedure={onSaveProcedure} onDeleteProcedure={onDeleteProcedure}/>:activeView==='catalog'?<CatalogAdminView offices={offices} procedures={procedures} users={users} onSaveOffice={onSaveOffice} onDeleteOffice={onDeleteOffice} onSaveProcedure={onSaveProcedure} onDeleteProcedure={onDeleteProcedure} onSaveUser={onSaveUser} onDeleteUser={onDeleteUser} onResetPassword={onResetPassword} onToggleUserActive={onToggleUserActive} onImportStudents={onImportStudents}/>:activeView==='book'?<BookAuditView items={items}/>:activeView==='tracking'?<TrackingView items={items}/>:<AdminControlView items={items} offices={offices} setActiveView={setActiveView}/>
 
   const login=(id)=>{setCurrentUser(null);setProfileId(id);setActiveView(id==='admin'?'control':id==='estudiante'||id==='docente'?'portal':'work');setLoggedIn(true)}
-  const onCredentialLogin=(username,password)=>{
-    const user=authenticate(users,username,password)
-    if(!user)return false
+  const loginAsUser=user=>{
     setCurrentUser(user);setProfileId(user.role);if(user.office)setOfficeId(user.office)
     setActiveView(user.role==='admin'?'control':user.role==='estudiante'||user.role==='docente'?'portal':'work')
     setLoggedIn(true)
+  }
+  const onCredentialLogin=(username,password)=>{
+    const user=authenticate(users,username,password)
+    if(!user)return false
+    loginAsUser(user)
+    return true
+  }
+  const onGoogleLogin=email=>{
+    const user=authenticateByEmail(users,email)
+    if(!user)return false
+    loginAsUser(user)
     return true
   }
   const onLogout=()=>{setLoggedIn(false);setCurrentUser(null)}
-  if(!loggedIn)return <LoginView onLogin={login} onCredentialLogin={onCredentialLogin}/>
+  if(!loggedIn)return <LoginView onLogin={login} onCredentialLogin={onCredentialLogin} onGoogleLogin={onGoogleLogin}/>
   return <><AppShell profileId={profileId} setProfileId={setProfileId} officeId={officeId} setOfficeId={setOfficeId} offices={offices} currentUser={currentUser} activeView={activeView} setActiveView={setActiveView} alerts={alerts} onReset={reset} onLogout={onLogout}>{content}</AppShell><Toast message={toast.message} type={toast.type}/></>
 }

@@ -13,12 +13,12 @@ export const seedWorkflowConfigs = {
 }
 
 export const seedUsers = [
-  {id:'u-admin1',username:'admin',password:'admin123',fullName:'Administrador ARIB',role:'admin',office:'mesa_partes',dni:'',codigo:'',anioIngreso:'',carrera:'',active:true},
-  {id:'u-sec1',username:'secretaria',password:'secretaria123',fullName:'Secretaría ARIB',role:'secretaria',office:'mesa_partes',dni:'',codigo:'',anioIngreso:'',carrera:'',active:true},
-  {id:'u-dir1',username:'direccion',password:'direccion123',fullName:'Dirección ARIB',role:'direccion',office:'direccion',dni:'',codigo:'',anioIngreso:'',carrera:'',active:true},
-  {id:'u-bib1',username:'biblioteca',password:'biblioteca123',fullName:'Encargado de Biblioteca',role:'oficina',office:'biblioteca',dni:'',codigo:'',anioIngreso:'',carrera:'',active:true},
-  {id:'u-est1',username:'2023100045',password:'70223344',fullName:'Juan Carlos Mamani',role:'estudiante',office:null,dni:'70223344',codigo:'2023100045',anioIngreso:'2023',carrera:'Arquitectura de Plataformas y Servicios de TI',active:true},
-  {id:'u-doc1',username:'docente.rosa',password:'73445566',fullName:'Rosa Yana Condori',role:'docente',office:null,dni:'73445566',codigo:'',anioIngreso:'',carrera:'Contabilidad',active:true},
+  {id:'u-admin1',username:'admin',password:'admin123',email:'admin@arib.edu.pe',fullName:'Administrador ARIB',role:'admin',office:'mesa_partes',dni:'',codigo:'',anioIngreso:'',carrera:'',active:true},
+  {id:'u-sec1',username:'secretaria',password:'secretaria123',email:'secretaria@arib.edu.pe',fullName:'Secretaría ARIB',role:'secretaria',office:'mesa_partes',dni:'',codigo:'',anioIngreso:'',carrera:'',active:true},
+  {id:'u-dir1',username:'direccion',password:'direccion123',email:'direccion@arib.edu.pe',fullName:'Dirección ARIB',role:'direccion',office:'direccion',dni:'',codigo:'',anioIngreso:'',carrera:'',active:true},
+  {id:'u-bib1',username:'biblioteca',password:'biblioteca123',email:'biblioteca@arib.edu.pe',fullName:'Encargado de Biblioteca',role:'oficina',office:'biblioteca',dni:'',codigo:'',anioIngreso:'',carrera:'',active:true},
+  {id:'u-est1',username:'2023100045',password:'70223344',email:'2023100045@arib.edu.pe',fullName:'Juan Carlos Mamani',role:'estudiante',office:null,dni:'70223344',codigo:'2023100045',anioIngreso:'2023',carrera:'Arquitectura de Plataformas y Servicios de TI',active:true},
+  {id:'u-doc1',username:'docente.rosa',password:'73445566',email:'docente.rosa@arib.edu.pe',fullName:'Rosa Yana Condori',role:'docente',office:null,dni:'73445566',codigo:'',anioIngreso:'',carrera:'Contabilidad',active:true},
 ]
 
 export const seedExpedientes = [

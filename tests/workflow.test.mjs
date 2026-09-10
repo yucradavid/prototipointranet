@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { createVirtual,registerVirtual,issueProveido,observeAtOffice,correctObservation,completeOfficeStep,finalizeCase,validateWorkflowRoute,slaInfo,canDeleteOffice,canDeleteProcedure,authenticate } from '../src/workflowEngine.js'
+import { createVirtual,registerVirtual,issueProveido,observeAtOffice,correctObservation,completeOfficeStep,finalizeCase,validateWorkflowRoute,slaInfo,canDeleteOffice,canDeleteProcedure,authenticate,authenticateByEmail,redirectToOffice } from '../src/workflowEngine.js'
 import { procedureById } from '../src/data/catalogs.js'
 
 const base={procedureId:'const_biblioteca',ownerProfile:'estudiante',solicitante:'Demo',asunto:'Constancia',adjuntos:[],numeroFolios:1,fecha:'01/01/2026',hora:'08:00'}
@@ -78,4 +78,27 @@ test('authenticate valida usuario, contraseña y estado activo',()=>{
  assert.equal(authenticate(users,'2023100045','clave-mala'),null)
  assert.equal(authenticate(users,'inactivo','123'),null)
  assert.equal(authenticate(users,'no-existe','x'),null)
+})
+
+test('authenticateByEmail simula el login de Google por correo institucional',()=>{
+ const users=[
+   {id:'u1',email:'Maria.QA@arib.edu.pe',active:true},
+   {id:'u2',email:'inactivo@arib.edu.pe',active:false},
+ ]
+ assert.equal(authenticateByEmail(users,'maria.qa@arib.edu.pe')?.id,'u1')
+ assert.equal(authenticateByEmail(users,'inactivo@arib.edu.pe'),null)
+ assert.equal(authenticateByEmail(users,'no-existe@arib.edu.pe'),null)
+ assert.equal(authenticateByEmail(users,''),null)
+})
+
+test('redirectToOffice inserta una oficina fuera de ruta y conserva el resto',()=>{
+ const r=registerVirtual(createVirtual(base,'SOL-1','08:00'),6001,'08:05')
+ const p=issueProveido(r,{proveido:'PASE',routePlan:['biblioteca','jefatura_academica'],routeVersion:1},'08:10')
+ const red=redirectToOffice(p,{officeId:'tesoreria',note:'Requiere validar pago'},'08:15')
+ assert.equal(red.oficinaActual,'tesoreria')
+ assert.deepEqual(red.routePlan,['biblioteca','tesoreria','jefatura_academica'])
+ assert.equal(red.routeIndex,1)
+ const done=completeOfficeStep(red,{note:'Conforme'},'08:20')
+ assert.equal(done.oficinaActual,'jefatura_academica')
+ assert.throws(()=>redirectToOffice(p,{officeId:'biblioteca'},'08:15'))
 })
