@@ -2,13 +2,14 @@ import { officeName, procedureById } from './data/catalogs.js'
 
 const event=(actor,action,text,time)=>({time,actor,action,text})
 
-export function createVirtual(data, tracking, time){
-  return {...data,id:`sol-${Date.now()}`,numero:null,tracking,canal:'Virtual',tipoDocumento:'FUT',estado:'SOLICITUD_VIRTUAL',oficinaActual:'mesa_partes',firmaSecretaria:'',vistoBuenoDireccion:'',proveido:'',routePlan:[],routeIndex:-1,routeVersion:null,respuesta:'',documentoRespuesta:'',observation:null,historial:[event('Solicitante','Envío virtual','Envió FUT virtual. Pendiente de validación en Mesa de Partes.',time)]}
+export function createVirtual(data, numero, time){
+  const tracking=`ARIB-${numero}`
+  return {...data,id:`sol-${Date.now()}`,numero,tracking,canal:'Virtual',tipoDocumento:'FUT',estado:'SOLICITUD_VIRTUAL',oficinaActual:'mesa_partes',firmaSecretaria:'',vistoBuenoDireccion:'',proveido:'',routePlan:[],routeIndex:-1,routeVersion:null,respuesta:'',documentoRespuesta:'',observation:null,historial:[event('Solicitante','Envío virtual',`Envió FUT virtual. N.° de expediente ${numero} asignado. Pendiente de validación en Mesa de Partes.`,time)]}
 }
 
-export function registerVirtual(exp,numero,time){
+export function registerVirtual(exp,time){
   if(exp.estado!=='SOLICITUD_VIRTUAL') throw new Error('Solo se puede registrar una solicitud virtual pendiente.')
-  return {...exp,numero,tracking:`ARIB-${numero}`,estado:'EN_DIRECCION',oficinaActual:'direccion',firmaSecretaria:'Secretaría · recepción conforme',historial:[...exp.historial,event('Secretaría','Registro',`Generó expediente N.° ${numero}. Por regla crítica, fue remitido obligatoriamente a Dirección.`,time)]}
+  return {...exp,estado:'EN_DIRECCION',oficinaActual:'direccion',firmaSecretaria:'Secretaría · recepción conforme',historial:[...exp.historial,event('Secretaría','Registro',`Validó el expediente N.° ${exp.numero}. Por regla crítica, fue remitido obligatoriamente a Dirección.`,time)]}
 }
 
 export function createPhysical(data,numero,time){
@@ -59,7 +60,7 @@ export function routeProgress(exp){
   const route=exp.routePlan||[]
   const all=[...prefix,...route,'mesa_partes_cierre']
   let completed=0
-  if(exp.numero) completed=1
+  if(exp.estado!=='SOLICITUD_VIRTUAL') completed=1
   if(exp.vistoBuenoDireccion) completed=2
   if(['EN_OFICINA','OBSERVADO','RESPUESTA_MESA','FINALIZADO'].includes(exp.estado)) completed=2+Math.max(0,exp.routeIndex)
   if(['RESPUESTA_MESA','FINALIZADO'].includes(exp.estado)) completed=2+route.length
@@ -102,6 +103,13 @@ export function canDeleteOffice(officeId,{items=[],workflows={}}={}){
 export function canDeleteProcedure(procedureId,{items=[]}={}){
   if(items.some(x=>x.procedureId===procedureId)) return 'El trámite tiene expedientes registrados y no puede eliminarse.'
   return null
+}
+
+export function validateRolePermissions(role,data){
+  const errors=[]
+  if(!Array.isArray(data?.views)||data.views.length===0) errors.push('El rol debe conservar acceso a al menos una vista.')
+  if(role==='admin'&&!(data?.views||[]).includes('catalog')) errors.push('El rol Administrador no puede perder el acceso a "Usuarios y catálogos": es el único lugar para revertir cambios de permisos.')
+  return errors
 }
 
 export function authenticate(users,username,password){

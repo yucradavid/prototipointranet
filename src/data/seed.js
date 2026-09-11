@@ -17,6 +17,11 @@ export const seedUsers = [
   {id:'u-sec1',username:'secretaria',password:'secretaria123',email:'secretaria@arib.edu.pe',fullName:'Secretaría ARIB',role:'secretaria',office:'mesa_partes',dni:'',codigo:'',anioIngreso:'',carrera:'',active:true},
   {id:'u-dir1',username:'direccion',password:'direccion123',email:'direccion@arib.edu.pe',fullName:'Dirección ARIB',role:'direccion',office:'direccion',dni:'',codigo:'',anioIngreso:'',carrera:'',active:true},
   {id:'u-bib1',username:'biblioteca',password:'biblioteca123',email:'biblioteca@arib.edu.pe',fullName:'Encargado de Biblioteca',role:'oficina',office:'biblioteca',dni:'',codigo:'',anioIngreso:'',carrera:'',active:true},
+  {id:'u-ja1',username:'jefatura_academica',password:'jefatura123',email:'jefatura_academica@arib.edu.pe',fullName:'Encargado de Jefatura Académica',role:'oficina',office:'jefatura_academica',dni:'',codigo:'',anioIngreso:'',carrera:'',active:true},
+  {id:'u-tes1',username:'tesoreria',password:'tesoreria123',email:'tesoreria@arib.edu.pe',fullName:'Encargado de Tesorería',role:'oficina',office:'tesoreria',dni:'',codigo:'',anioIngreso:'',carrera:'',active:true},
+  {id:'u-efsrt1',username:'efsrt',password:'efsrt123',email:'efsrt@arib.edu.pe',fullName:'Encargado de EFSRT',role:'oficina',office:'efsrt',dni:'',codigo:'',anioIngreso:'',carrera:'',active:true},
+  {id:'u-ua1',username:'unidad_academica',password:'unidad123',email:'unidad_academica@arib.edu.pe',fullName:'Encargado de Unidad Académica',role:'oficina',office:'unidad_academica',dni:'',codigo:'',anioIngreso:'',carrera:'',active:true},
+  {id:'u-sa1',username:'secretaria_academica',password:'secacad123',email:'secretaria_academica@arib.edu.pe',fullName:'Encargado de Secretaría Académica',role:'oficina',office:'secretaria_academica',dni:'',codigo:'',anioIngreso:'',carrera:'',active:true},
   {id:'u-est1',username:'2023100045',password:'70223344',email:'2023100045@arib.edu.pe',fullName:'Juan Carlos Mamani',role:'estudiante',office:null,dni:'70223344',codigo:'2023100045',anioIngreso:'2023',carrera:'Arquitectura de Plataformas y Servicios de TI',active:true},
   {id:'u-doc1',username:'docente.rosa',password:'73445566',email:'docente.rosa@arib.edu.pe',fullName:'Rosa Yana Condori',role:'docente',office:null,dni:'73445566',codigo:'',anioIngreso:'',carrera:'Contabilidad',active:true},
 ]
@@ -68,10 +73,10 @@ export const seedExpedientes = [
     ]
   },
   {
-    id:'sol-001',numero:null,tracking:'SOL-ARIB-001',ownerProfile:'estudiante',canal:'Virtual',fecha:date,hora:'15:18',tipoDocumento:'FUT',procedureId:'const_egresado',
+    id:'sol-001',numero:5227,tracking:'ARIB-5227',ownerProfile:'estudiante',canal:'Virtual',fecha:date,hora:'15:18',tipoDocumento:'FUT',procedureId:'const_egresado',
     solicitante:'Ana Torres Flores',condicion:'Estudiante',programa:'Arquitectura de Plataformas y Servicios de TI',dni:'76112233',celular:'958741236',correo:'ana.demo@correo.pe',direccion:'Ichuña, Moquegua',
     asunto:'Constancia de egresado',fundamento:'Solicito constancia para trámite personal.',adjuntos:[{name:'FUT_ARIB.pdf',size:'310 KB'},{name:'DNI.pdf',size:'180 KB'}],numeroFolios:2,
     estado:'SOLICITUD_VIRTUAL',oficinaActual:'mesa_partes',firmaSecretaria:'',vistoBuenoDireccion:'',proveido:'',routePlan:[],routeIndex:-1,routeVersion:null,respuesta:'',documentoRespuesta:'',observation:null,
-    historial:[{time:'15:18',actor:'Solicitante',action:'Envío virtual',text:'Envió FUT virtual. Pendiente de validación en Mesa de Partes.'}]
+    historial:[{time:'15:18',actor:'Solicitante',action:'Envío virtual',text:'Envió FUT virtual. N.° de expediente 5227 asignado. Pendiente de validación en Mesa de Partes.'}]
   }
 ]

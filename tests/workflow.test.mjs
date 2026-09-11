@@ -1,23 +1,24 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { createVirtual,registerVirtual,issueProveido,observeAtOffice,correctObservation,completeOfficeStep,finalizeCase,validateWorkflowRoute,slaInfo,canDeleteOffice,canDeleteProcedure,authenticate,authenticateByEmail,redirectToOffice } from '../src/workflowEngine.js'
+import { createVirtual,registerVirtual,issueProveido,observeAtOffice,correctObservation,completeOfficeStep,finalizeCase,validateWorkflowRoute,slaInfo,canDeleteOffice,canDeleteProcedure,authenticate,authenticateByEmail,redirectToOffice,routeProgress,validateRolePermissions } from '../src/workflowEngine.js'
 import { procedureById } from '../src/data/catalogs.js'
 
 const base={procedureId:'const_biblioteca',ownerProfile:'estudiante',solicitante:'Demo',asunto:'Constancia',adjuntos:[],numeroFolios:1,fecha:'01/01/2026',hora:'08:00'}
 
 test('todo registro pasa primero a Dirección',()=>{
- const v=createVirtual(base,'SOL-1','08:00')
- const r=registerVirtual(v,6001,'08:05')
- assert.equal(r.estado,'EN_DIRECCION');assert.equal(r.oficinaActual,'direccion');assert.equal(r.vistoBuenoDireccion,'')
+ const v=createVirtual(base,6001,'08:00')
+ assert.equal(v.numero,6001);assert.equal(v.tracking,'ARIB-6001')
+ const r=registerVirtual(v,'08:05')
+ assert.equal(r.numero,6001);assert.equal(r.estado,'EN_DIRECCION');assert.equal(r.oficinaActual,'direccion');assert.equal(r.vistoBuenoDireccion,'')
 })
 
 test('Dirección no puede emitir proveído sin ruta',()=>{
- const r=registerVirtual(createVirtual(base,'SOL-1','08:00'),6001,'08:05')
+ const r=registerVirtual(createVirtual(base,6001,'08:00'),'08:05')
  assert.throws(()=>issueProveido(r,{proveido:'PASE',routePlan:[]},'08:10'))
 })
 
 test('Dirección activa una ruta con varias oficinas',()=>{
- const r=registerVirtual(createVirtual(base,'SOL-1','08:00'),6001,'08:05')
+ const r=registerVirtual(createVirtual(base,6001,'08:00'),'08:05')
  const p=issueProveido(r,{proveido:'PASE SEGÚN RUTA',routePlan:['biblioteca','jefatura_academica'],routeVersion:2},'08:10')
  assert.equal(p.oficinaActual,'biblioteca');assert.equal(p.routeIndex,0);assert.equal(p.routePlan.length,2)
  const n=completeOfficeStep(p,{note:'Conforme'},'08:20')
@@ -25,7 +26,7 @@ test('Dirección activa una ruta con varias oficinas',()=>{
 })
 
 test('observación vuelve al solicitante y subsanación retorna a la misma oficina',()=>{
- const r=registerVirtual(createVirtual(base,'SOL-1','08:00'),6001,'08:05')
+ const r=registerVirtual(createVirtual(base,6001,'08:00'),'08:05')
  const p=issueProveido(r,{proveido:'PASE',routePlan:['tesoreria'],routeVersion:1},'08:10')
  const o=observeAtOffice(p,{text:'Adjunte voucher'},'08:20')
  assert.equal(o.estado,'OBSERVADO');assert.equal(o.observation.office,'tesoreria')
@@ -34,7 +35,7 @@ test('observación vuelve al solicitante y subsanación retorna a la misma ofici
 })
 
 test('última oficina devuelve a Mesa de Partes y Secretaría finaliza',()=>{
- const r=registerVirtual(createVirtual(base,'SOL-1','08:00'),6001,'08:05')
+ const r=registerVirtual(createVirtual(base,6001,'08:00'),'08:05')
  const p=issueProveido(r,{proveido:'PASE',routePlan:['biblioteca'],routeVersion:1},'08:10')
  const a=completeOfficeStep(p,{note:'Constancia emitida',document:'constancia.pdf'},'08:20')
  assert.equal(a.estado,'RESPUESTA_MESA');assert.equal(a.oficinaActual,'mesa_partes')
@@ -49,7 +50,7 @@ test('rutas configurables protegen los pasos obligatorios',()=>{
 
 test('slaInfo calcula vencimiento a partir del SLA del trámite',()=>{
  const sla=procedureById('const_biblioteca').sla
- const r=registerVirtual(createVirtual(base,'SOL-1','08:00'),6001,'08:05')
+ const r=registerVirtual(createVirtual(base,6001,'08:00'),'08:05')
  const info=slaInfo(r,new Date(2026,0,1))
  assert.equal(info.overdue,false)
  const overdueInfo=slaInfo(r,new Date(2026,0,1+sla+5))
@@ -61,7 +62,7 @@ test('slaInfo calcula vencimiento a partir del SLA del trámite',()=>{
 })
 
 test('no se puede eliminar una oficina u trámite en uso',()=>{
- const r=registerVirtual(createVirtual(base,'SOL-1','08:00'),6001,'08:05')
+ const r=registerVirtual(createVirtual(base,6001,'08:00'),'08:05')
  const p=issueProveido(r,{proveido:'PASE',routePlan:['biblioteca'],routeVersion:1},'08:10')
  assert.ok(canDeleteOffice('biblioteca',{items:[p],workflows:{}}))
  assert.equal(canDeleteOffice('tesoreria',{items:[p],workflows:{}}),null)
@@ -92,7 +93,7 @@ test('authenticateByEmail simula el login de Google por correo institucional',()
 })
 
 test('redirectToOffice inserta una oficina fuera de ruta y conserva el resto',()=>{
- const r=registerVirtual(createVirtual(base,'SOL-1','08:00'),6001,'08:05')
+ const r=registerVirtual(createVirtual(base,6001,'08:00'),'08:05')
  const p=issueProveido(r,{proveido:'PASE',routePlan:['biblioteca','jefatura_academica'],routeVersion:1},'08:10')
  const red=redirectToOffice(p,{officeId:'tesoreria',note:'Requiere validar pago'},'08:15')
  assert.equal(red.oficinaActual,'tesoreria')
@@ -101,4 +102,20 @@ test('redirectToOffice inserta una oficina fuera de ruta y conserva el resto',()
  const done=completeOfficeStep(red,{note:'Conforme'},'08:20')
  assert.equal(done.oficinaActual,'jefatura_academica')
  assert.throws(()=>redirectToOffice(p,{officeId:'biblioteca'},'08:15'))
+})
+
+test('el N.° de expediente se asigna desde el envío virtual, no al registrar',()=>{
+ const v=createVirtual(base,7001,'08:00')
+ assert.equal(v.numero,7001);assert.equal(v.estado,'SOLICITUD_VIRTUAL')
+ assert.equal(routeProgress(v).completed,0,'Mesa de Partes no debe marcarse como completado antes de la validación de Secretaría')
+ const r=registerVirtual(v,'08:05')
+ assert.equal(r.numero,7001,'el número no cambia al registrar')
+ assert.equal(routeProgress(r).completed,1,'tras el registro, el paso Mesa de Partes ya está completado')
+})
+
+test('validateRolePermissions exige al menos una vista y protege el acceso del admin a catálogos',()=>{
+ assert.deepEqual(validateRolePermissions('secretaria',{views:['work','book'],permissions:[]}),[])
+ assert.ok(validateRolePermissions('secretaria',{views:[],permissions:[]}).length>0)
+ assert.ok(validateRolePermissions('admin',{views:['control','workflow'],permissions:[]}).length>0)
+ assert.deepEqual(validateRolePermissions('admin',{views:['control','catalog'],permissions:[]}),[])
 })

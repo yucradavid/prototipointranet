@@ -40,6 +40,66 @@ export const PROFILES = [
 export const PROGRAMS = ['Arquitectura de Plataformas y Servicios de TI','Contabilidad','Enfermería Técnica','Otro programa']
 export const CONDITIONS = ['Estudiante','Egresado','Docente','Administrativo','Persona externa']
 
+// Catálogo de vistas del sistema (id interno usado por activeView) y de qué roles
+// podrían razonablemente necesitarla, para poblar el panel de "Roles y permisos".
+export const VIEW_CATALOG = [
+  {id:'control', label:'Centro de control'},
+  {id:'workflow', label:'Trámites y rutas'},
+  {id:'catalog', label:'Usuarios y catálogos'},
+  {id:'work', label:'Mesa de trabajo (bandeja del rol)'},
+  {id:'book', label:'Libro y auditoría'},
+  {id:'portal', label:'Mi Mesa de Partes'},
+  {id:'tracking', label:'Seguimiento'},
+]
+export const POSSIBLE_VIEWS_BY_ROLE = {
+  estudiante:['portal','tracking'],
+  docente:['portal','tracking'],
+  secretaria:['work','book','tracking'],
+  direccion:['work','book','tracking'],
+  oficina:['work','book','tracking'],
+  admin:['control','workflow','catalog','book','tracking'],
+}
+
+// Catálogo de permisos granulares (acciones concretas) que puede tener un rol.
+export const PERMISSIONS_CATALOG = [
+  {key:'request.create', label:'Crear solicitudes (FUT)'},
+  {key:'request.view_own', label:'Ver sus propias solicitudes'},
+  {key:'request.correct', label:'Subsanar observaciones'},
+  {key:'case.register', label:'Registrar expedientes físicos/virtuales'},
+  {key:'case.receive', label:'Recibir expedientes'},
+  {key:'case.close', label:'Cerrar y entregar expedientes'},
+  {key:'book.view', label:'Ver libro digital'},
+  {key:'case.proveido', label:'Emitir proveído'},
+  {key:'route.choose', label:'Definir ruta de oficinas'},
+  {key:'case.view', label:'Ver detalle de expedientes'},
+  {key:'case.attend', label:'Atender y completar pasos en oficina'},
+  {key:'case.observe', label:'Observar expedientes'},
+  {key:'case.forward', label:'Redirigir a otra oficina'},
+  {key:'system.manage', label:'Administrar el sistema'},
+  {key:'workflow.manage', label:'Administrar trámites y rutas'},
+  {key:'users.manage', label:'Administrar usuarios'},
+  {key:'audit.view', label:'Ver auditoría'},
+  {key:'reports.view', label:'Ver reportes'},
+]
+
+export const DEFAULT_ROLE_PERMISSIONS = {
+  estudiante:{views:['portal','tracking'], permissions:['request.create','request.view_own','request.correct']},
+  docente:{views:['portal','tracking'], permissions:['request.create','request.view_own','request.correct']},
+  secretaria:{views:['work','book','tracking'], permissions:['case.register','case.receive','case.close','book.view']},
+  direccion:{views:['work','tracking'], permissions:['case.proveido','route.choose','case.view']},
+  oficina:{views:['work','tracking'], permissions:['case.attend','case.observe','case.forward']},
+  admin:{views:['control','workflow','catalog','book','tracking'], permissions:['system.manage','workflow.manage','users.manage','audit.view','reports.view']},
+}
+
+// Igual que OFFICES/PROCEDURES: el prototipo permite a Administrador reconfigurar
+// en vivo qué vistas ve cada rol y qué permisos tiene. App.jsx sincroniza esto con
+// localStorage a través de setRolePermissionsCatalog.
+export let ROLE_PERMISSIONS = JSON.parse(JSON.stringify(DEFAULT_ROLE_PERMISSIONS))
+export function setRolePermissionsCatalog(v){ ROLE_PERMISSIONS = v }
+export const roleViews = role => ROLE_PERMISSIONS[role]?.views || []
+export const rolePerms = role => ROLE_PERMISSIONS[role]?.permissions || []
+export const hasPermission = (role,perm) => rolePerms(role).includes(perm)
+
 export const officeById = id => OFFICES.find(x=>x.id===id)
 export const procedureById = id => PROCEDURES.find(x=>x.id===id)
 export const officeName = id => officeById(id)?.name || id || '—'
