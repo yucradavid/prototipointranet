@@ -41,3 +41,21 @@ npm run test:logic
 ## Importante
 
 Este prototipo utiliza `localStorage` como repositorio temporal para que el flujo sea demostrable sin backend. En producción, el Repository de React consumirá Laravel API y Laravel será la única fuente de verdad para permisos, estados, rutas y trazabilidad.
+
+## Traspaso a producción (Frontend + Backend Laravel 11 / PostgreSQL)
+
+Para repartir tareas ya, cada integrante tiene su propio checklist resumido, listo para copiar a Trello:
+
+- **[`docs/SPRINT1_TAREAS_BACKEND.md`](docs/SPRINT1_TAREAS_BACKEND.md)**
+- **[`docs/SPRINT1_TAREAS_FRONTEND.md`](docs/SPRINT1_TAREAS_FRONTEND.md)**
+
+Ambos comparten la misma lista "Compartido / Bloqueante" — hay que resolverla en conjunto antes de programar en paralelo.
+
+Cada integrante del equipo tiene además su propia guía técnica completa:
+
+- **[`docs/HANDOFF_BACKEND.md`](docs/HANDOFF_BACKEND.md)** — máquina de estados, invariantes de negocio, modelo de datos PostgreSQL, contrato de API a exponer, autenticación/RBAC.
+- **[`docs/HANDOFF_FRONTEND.md`](docs/HANDOFF_FRONTEND.md)** — vistas por rol, qué pantallas construir (incluido el módulo de pagos), contrato de API a consumir, manejo de errores y sesión.
+
+Ambos documentos comparten el mismo contrato de API (sección "Contrato de API" en cada uno) — si alguno lo cambia, debe avisarle al otro. Son el **Sprint 1** (pago verificado manualmente por Tesorería, tal como funciona hoy este prototipo).
+
+- **[`docs/SPRINT2_PASARELA_PAGOS.md`](docs/SPRINT2_PASARELA_PAGOS.md)** — **Sprint 2**, para cuando quieran automatizar la verificación del pago: con qué pasarela afiliarse (recomendado: Culqi), cómo se integra (tokenización → cargo → webhook), cuánto cuesta, e historias de usuario separadas para Backend y Frontend.

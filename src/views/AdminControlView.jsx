@@ -2,10 +2,10 @@ import React, { useMemo, useState } from 'react'
 import {
   Activity, Stamp, CheckCircle2, AlertTriangle, ShieldCheck, Search,
   Clock3, Route, FileText, LayoutGrid, Users, Building2, ChevronRight,
-  TrendingUp, BarChart3, AlertCircle, ArrowUpRight
+  TrendingUp, BarChart3, AlertCircle, ArrowUpRight, Wallet
 } from 'lucide-react'
 import { Kpi, Panel, StatusBadge, SlaBadge, Badge, RouteStrip, Empty } from '../components/ui'
-import { PROFILES, officeName, rolePerms } from '../data/catalogs'
+import { PROFILES, PERMISSIONS_CATALOG, officeName, rolePerms } from '../data/catalogs'
 import { slaInfo } from '../workflowEngine'
 
 export default function AdminControlView({ items, offices, setActiveView }) {
@@ -281,6 +281,19 @@ export default function AdminControlView({ items, offices, setActiveView }) {
           </div>
         </button>
 
+        <button className="admin-card" onClick={() => setActiveView('caja')}>
+          <div style={{ width: 42, height: 42, borderRadius: 10, background: '#d1fae5', color: '#059669', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <Wallet size={22} />
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <b>Caja y Pagos</b>
+              <ArrowUpRight size={16} style={{ color: 'var(--arib-navy-light)' }} />
+            </div>
+            <span>Consolidado de derechos de trámite cobrados por Tesorería y pendientes de cobro.</span>
+          </div>
+        </button>
+
         <button className="admin-card" onClick={() => setActiveView('catalog')}>
           <div style={{ width: 42, height: 42, borderRadius: 10, background: 'var(--arib-warning-subtle)', color: 'var(--arib-warning)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
             <Users size={22} />
@@ -318,7 +331,7 @@ export default function AdminControlView({ items, offices, setActiveView }) {
                   <div className="permission-tags">
                     {perms.slice(0, 4).map(x => (
                       <Badge key={x} tone="neutral">
-                        {x}
+                        {PERMISSIONS_CATALOG.find(p => p.key === x)?.label || x}
                       </Badge>
                     ))}
                     {perms.length > 4 && (

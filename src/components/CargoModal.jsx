@@ -1,8 +1,10 @@
 import React from 'react'
 import { Printer, X, ShieldCheck, Download, CheckCircle2 } from 'lucide-react'
+import { procedureById } from '../data/catalogs'
 
 export default function CargoModal({ exp, onClose }) {
   if (!exp) return null
+  const proc = procedureById(exp.procedureId)
 
   return (
     <div className="modal-backdrop" onMouseDown={e => { if (e.target === e.currentTarget) onClose?.() }}>
@@ -213,6 +215,11 @@ export default function CargoModal({ exp, onClose }) {
             {exp.estado === 'SOLICITUD_VIRTUAL' && (
               <p className="cargo-footnote" style={{ fontSize: 11, color: '#0284c7', textAlign: 'center', margin: 0, fontWeight: 600 }}>
                 Este es su número definitivo de expediente desde el momento del registro. Mesa de Partes validará los requisitos y lo derivará a Dirección General.
+              </p>
+            )}
+            {proc?.monto > 0 && (
+              <p className="cargo-footnote" style={{ fontSize: 11, color: '#b45309', textAlign: 'center', margin: '6px 0 0', fontWeight: 600 }}>
+                Este trámite tiene un costo de S/ {Number(proc.monto).toFixed(2)}. Tesorería validará el comprobante de pago que adjuntó (ver sección V) antes de continuar el trámite.
               </p>
             )}
           </div>

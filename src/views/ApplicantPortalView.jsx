@@ -1,8 +1,10 @@
 import React,{useEffect,useMemo,useState} from 'react'
-import { Plus, Search, FileText, UploadCloud, Send, AlertTriangle, Download, CheckCircle2, Paperclip, X, Clock3, Filter, Sparkles, HelpCircle, HardDrive, Check } from 'lucide-react'
-import { Panel, Badge, StatusBadge, SlaBadge, Modal, Field, Empty, RouteStrip, Timeline, FileList } from '../components/ui'
+import { Plus, Search, FileText, UploadCloud, Send, AlertTriangle, Download, CheckCircle2, Paperclip, X, Clock3, Filter, Sparkles, HelpCircle, HardDrive, Check, Wallet } from 'lucide-react'
+import { Panel, Badge, StatusBadge, SlaBadge, PaymentStatusCard, Modal, Field, Empty, RouteStrip, Timeline, FileList } from '../components/ui'
 import CargoModal from '../components/CargoModal'
-import { PROGRAMS, CONDITIONS, procedureById, officeName } from '../data/catalogs'
+import ReciboPagoModal from '../components/ReciboPagoModal'
+import { PROGRAMS, CONDITIONS, procedureById, officeName, PAYMENT_INFO } from '../data/catalogs'
+import { fileToCompressedDataUrl, isDataUrl } from '../utils/imageUpload'
 
 const MAX_ATTACHMENTS=10
 const defaultForm={
@@ -38,12 +40,38 @@ export default function ApplicantPortalView({profileId,items,procedures,currentU
   const [form,setForm]=useState(initialForm)
   const [checklist,setChecklist]=useState([])
   const [extraLinks,setExtraLinks]=useState([])
+  const [paymentEvidenceUrl,setPaymentEvidenceUrl]=useState('')
+  const [paymentFileName,setPaymentFileName]=useState('')
+  const [paymentFileError,setPaymentFileError]=useState('')
+  const [paymentFileBusy,setPaymentFileBusy]=useState(false)
   const [formError,setFormError]=useState('')
   const [cargoExp,setCargoExp]=useState(null)
+  const [reciboExp,setReciboExp]=useState(null)
 
   useEffect(()=>{
     setChecklist(requirementLabels(form.procedureId).map(label=>({label,checked:false,url:''})))
+    setPaymentEvidenceUrl('')
+    setPaymentFileName('')
+    setPaymentFileError('')
   },[form.procedureId,open])
+
+  const choosePaymentFile=async e=>{
+    const file=e.target.files?.[0]
+    if(!file)return
+    setPaymentFileError('')
+    setPaymentFileBusy(true)
+    try{
+      const dataUrl=await fileToCompressedDataUrl(file)
+      setPaymentEvidenceUrl(dataUrl)
+      setPaymentFileName(file.name)
+      setFormError('')
+    }catch(err){
+      setPaymentFileError(err.message)
+    }finally{
+      setPaymentFileBusy(false)
+      e.target.value=''
+    }
+  }
 
   const allMine=useMemo(()=>
     items.filter(x=>currentUser ? x.ownerUserId===currentUser.id : x.ownerProfile===profileId),
@@ -87,9 +115,14 @@ export default function ApplicantPortalView({profileId,items,procedures,currentU
       setFormError('Marca y adjunta el enlace de Google Drive de todos los requisitos requeridos para este trámite.')
       return
     }
+    if(p.monto>0&&!paymentEvidenceUrl.trim()){
+      setFormError('Este trámite tiene costo: sube o pega el comprobante de pago (captura de Yape, voucher, etc.) antes de enviar.')
+      return
+    }
     const driveItems=[
       ...checklist.map(c=>({name:c.label,size:'Google Drive',url:c.url.trim()})),
-      ...extraLinks.filter(l=>l.url.trim()).map(l=>({name:l.label.trim()||'Documento adicional',size:'Google Drive',url:l.url.trim()}))
+      ...extraLinks.filter(l=>l.url.trim()).map(l=>({name:l.label.trim()||'Documento adicional',size:'Google Drive',url:l.url.trim()})),
+      ...(p.monto>0?[{name:'Comprobante de pago',size:isDataUrl(paymentEvidenceUrl)?(paymentFileName||'Archivo adjunto'):'Google Drive',url:paymentEvidenceUrl.trim()}]:[])
     ]
     const exp=onCreateVirtual({
       ...form,
@@ -101,6 +134,8 @@ export default function ApplicantPortalView({profileId,items,procedures,currentU
     setOpen(false)
     setForm(initialForm())
     setExtraLinks([])
+    setPaymentEvidenceUrl('')
+    setPaymentFileName('')
     setFormError('')
     if(exp) setCargoExp(exp)
   }
@@ -290,6 +325,9 @@ export default function ApplicantPortalView({profileId,items,procedures,currentU
                 </div>
               )}
 
+              {/* Estado del pago (solo si el trámite tiene costo) */}
+              <PaymentStatusCard exp={selected} onViewReceipt={()=>setReciboExp(selected)}/>
+
               {/* Recorrido / Stepper */}
               <h4>Recorrido del expediente en las dependencias</h4>
               <RouteStrip exp={selected}/>
@@ -352,8 +390,8 @@ export default function ApplicantPortalView({profileId,items,procedures,currentU
         footer={
           <>
             <button className="btn ghost" onClick={()=>setOpen(false)}>Cancelar</button>
-            <button className="btn primary" onClick={submit}>
-              <Send size={16}/> 
+            <button className="btn primary" onClick={submit} disabled={paymentFileBusy}>
+              <Send size={16}/>
               <span>Enviar solicitud a Mesa de Partes</span>
             </button>
           </>
@@ -367,7 +405,7 @@ export default function ApplicantPortalView({profileId,items,procedures,currentU
         <div className="form-grid two">
           <Field label="Tipo de trámite requerido" required>
             <select value={form.procedureId} onChange={e=>{setForm({...form,procedureId:e.target.value});setFormError('')}}>
-              {procedures.map(p=><option key={p.id} value={p.id}>{p.name} (SLA: {p.sla} días)</option>)}
+              {procedures.map(p=><option key={p.id} value={p.id}>{p.name} (SLA: {p.sla} días{p.monto>0?` · S/ ${Number(p.monto).toFixed(2)}`:' · Gratuito'})</option>)}
             </select>
           </Field>
           
@@ -488,12 +526,66 @@ export default function ApplicantPortalView({profileId,items,procedures,currentU
         {formError && <div className="login-error">{formError}</div>}
 
         <div className="form-note">
-          <Paperclip size={16} color="#0284c7"/> 
+          <Paperclip size={16} color="#0284c7"/>
           <span>Requisito normativo para este trámite: <b>{procedureById(form.procedureId)?.requires}</b></span>
         </div>
+        {procedureById(form.procedureId)?.monto>0 && (
+          <>
+            <div style={{fontWeight:800,fontSize:13,color:'#0284c7',display:'flex',gap:6,alignItems:'center',marginTop:16}}>
+              <span>4. Pago del derecho de trámite</span>
+            </div>
+
+            <div className="payment-status-card pending" style={{marginTop:8}}>
+              <Wallet size={22} style={{flex:'none'}}/>
+              <div>
+                <b>Este trámite tiene un costo de S/ {Number(procedureById(form.procedureId)?.monto).toFixed(2)}</b>
+                <p>
+                  Paga por Yape al <strong>{PAYMENT_INFO.yape}</strong>, o por depósito/transferencia a la cuenta{' '}
+                  <strong>{PAYMENT_INFO.cuenta}</strong> — {PAYMENT_INFO.banco} — CCI <strong>{PAYMENT_INFO.cci}</strong>,
+                  a nombre de <strong>{PAYMENT_INFO.titular}</strong>. Tesorería validará tu comprobante cuando tu expediente llegue a esa oficina.
+                </p>
+              </div>
+            </div>
+
+            <Field
+              label="Comprobante de pago (captura de Yape/Plin, voucher del banco, foto del ticket)"
+              required
+              hint="Sube la foto o captura directamente desde tu celular o computadora."
+            >
+              <label className="dropzone" style={{ padding: 14 }}>
+                <UploadCloud size={22} />
+                <b>{paymentFileBusy ? 'Procesando archivo…' : (paymentFileName || 'Subir foto o captura del comprobante')}</b>
+                <span>Formatos: JPG, PNG o PDF · Máximo 15 MB (las fotos se comprimen automáticamente)</span>
+                <input type="file" accept="image/*,.pdf" disabled={paymentFileBusy} onChange={choosePaymentFile} />
+              </label>
+
+              {paymentFileError && <div className="login-error">{paymentFileError}</div>}
+
+              {isDataUrl(paymentEvidenceUrl) && paymentEvidenceUrl.startsWith('data:image') && (
+                <img
+                  src={paymentEvidenceUrl}
+                  alt="Vista previa del comprobante"
+                  style={{ maxWidth: 160, borderRadius: 8, marginTop: 8, border: '1px solid var(--arib-border)', display: 'block' }}
+                />
+              )}
+
+              <div style={{ marginTop: 10 }}>
+                <span style={{ fontSize: 11, color: 'var(--arib-navy-light)', display: 'block', marginBottom: 4 }}>
+                  o, si ya lo tienes en Google Drive, pega el enlace aquí:
+                </span>
+                <input
+                  placeholder="Enlace de Google Drive (alternativa a subir el archivo)"
+                  value={isDataUrl(paymentEvidenceUrl) ? '' : paymentEvidenceUrl}
+                  onChange={e => { setPaymentEvidenceUrl(e.target.value); setPaymentFileName(''); setFormError('') }}
+                />
+              </div>
+            </Field>
+          </>
+        )}
       </Modal>
 
       <CargoModal exp={cargoExp} onClose={()=>setCargoExp(null)}/>
+      <ReciboPagoModal exp={reciboExp} onClose={()=>setReciboExp(null)}/>
     </div>
   )
 }

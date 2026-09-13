@@ -1,12 +1,14 @@
 import React, { useState } from 'react'
 import { Search, Route, FileText, UserRound, Calendar, Hash, FileCheck, Sparkles, HelpCircle } from 'lucide-react'
-import { Panel, StatusBadge, SlaBadge, Badge, RouteStrip, Timeline, Empty, FileList } from '../components/ui'
+import { Panel, StatusBadge, SlaBadge, Badge, RouteStrip, Timeline, Empty, FileList, PaymentStatusCard } from '../components/ui'
+import ReciboPagoModal from '../components/ReciboPagoModal'
 
 const QUICK_SEARCH_EXAMPLES = ['5225', '5226', '5227', 'ARIB-5225', '71234567']
 
 export default function TrackingView({ items }) {
   const [q, setQ] = useState('5225')
   const [selectedId, setSelectedId] = useState(null)
+  const [reciboExp, setReciboExp] = useState(null)
 
   const results = items.filter(x =>
     `${x.numero || ''} ${x.tracking || ''} ${x.solicitante} ${x.dni || ''}`
@@ -154,6 +156,9 @@ export default function TrackingView({ items }) {
                 <RouteStrip exp={selected} />
               </div>
 
+              {/* Estado del pago (solo si el trámite tiene costo) */}
+              <PaymentStatusCard exp={selected} onViewReceipt={() => setReciboExp(selected)} />
+
               {/* Key metadata grid */}
               <div
                 className="detail-cols"
@@ -231,6 +236,8 @@ export default function TrackingView({ items }) {
           )}
         </Panel>
       </div>
+
+      <ReciboPagoModal exp={reciboExp} onClose={() => setReciboExp(null)} />
     </div>
   )
 }

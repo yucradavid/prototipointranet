@@ -3,7 +3,7 @@ import { Plus, X, ArrowUp, ArrowDown, Building2, Route, Clock3, BookOpen } from 
 import { Modal, Field } from './ui'
 import { officeName } from '../data/catalogs'
 
-const emptyForm = { name: '', category: '', requires: '', sla: 3 }
+const emptyForm = { name: '', category: '', requires: '', sla: 3, monto: 0 }
 
 export default function ProcedureFormModal({ procedure, offices, onClose, onSave }) {
   const [form, setForm] = useState({ ...emptyForm, ...procedure })
@@ -34,7 +34,7 @@ export default function ProcedureFormModal({ procedure, offices, onClose, onSave
   const save = () => {
     if (!form.name.trim()) return
     const route = isEdit ? form.route : routeDraft
-    onSave({ ...form, route, sla: Number(form.sla) || 1 })
+    onSave({ ...form, route, sla: Number(form.sla) || 1, monto: Number(form.monto) || 0 })
   }
 
   return (
@@ -90,7 +90,31 @@ export default function ProcedureFormModal({ procedure, offices, onClose, onSave
             onChange={e => setForm({ ...form, sla: e.target.value })}
           />
         </Field>
+        <Field
+          label="Costo del trámite (S/)"
+          hint={Number(form.monto) > 0 ? 'Tesorería exigirá el registro del pago antes de completar su paso.' : 'Deja en 0 si el trámite es gratuito.'}
+        >
+          <input
+            type="number"
+            min="0"
+            step="0.5"
+            value={form.monto}
+            onChange={e => setForm({ ...form, monto: e.target.value })}
+          />
+        </Field>
       </div>
+
+      {Number(form.monto) > 0 && !(isEdit ? form.route : routeDraft).includes('tesoreria') && (
+        <div className="rule-banner" style={{ marginBottom: 16 }}>
+          <Route size={20} style={{ color: 'var(--arib-warning, #f59e0b)' }} />
+          <div>
+            <b>Ruta sin paso de Tesorería</b>
+            <span>
+              Este trámite tiene un costo asociado pero su ruta no incluye Tesorería, por lo que nadie validará el pago. Considera agregar Tesorería a la ruta.
+            </span>
+          </div>
+        </div>
+      )}
 
       {isEdit ? (
         <Field

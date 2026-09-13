@@ -217,6 +217,19 @@ export default function DireccionWorkbenchView({items,workflows,offices,permissi
                 </div>
               )}
 
+              {procedureById(selected.procedureId)?.monto>0 && !customRoute.includes('tesoreria') && (
+                <div className="rule-banner" style={{marginTop:8}}>
+                  <Route size={20} color="var(--arib-warning, #f59e0b)" style={{flex:'none'}}/>
+                  <div>
+                    <b>Ruta sin paso de Tesorería</b>
+                    <span>
+                      Este trámite tiene un costo de S/ {Number(procedureById(selected.procedureId)?.monto).toFixed(2)}, pero la ruta que estás por firmar no incluye Tesorería —
+                      nadie va a validar el pago. Si es intencional (ej. ya se cobró fuera del sistema), puedes continuar; si no, agrega Tesorería a la ruta.
+                    </span>
+                  </div>
+                </div>
+              )}
+
               {/* Proveído Editor */}
               <div style={{marginTop:6}}>
                 <label className="field">

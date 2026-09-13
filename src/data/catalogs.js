@@ -10,15 +10,29 @@ export const DEFAULT_OFFICES = [
 ]
 
 export const DEFAULT_PROCEDURES = [
-  {id:'const_biblioteca', name:'Constancia de biblioteca', category:'Constancias', requires:'FUT + DNI', sla:2, route:['biblioteca']},
-  {id:'iefsrt_egresado', name:'IEFSRT del egresado', category:'EFSRT', requires:'FUT + anexos', sla:4, route:['efsrt','jefatura_academica']},
-  {id:'cert_modular', name:'Certificado modular', category:'Certificados', requires:'FUT + DNI', sla:5, route:['secretaria_academica','jefatura_academica']},
-  {id:'examen_suficiencia', name:'Examen de suficiencia', category:'Académico', requires:'FUT + sustento', sla:5, route:['jefatura_academica','unidad_academica']},
-  {id:'plan_tutoria', name:'Plan de consejería y tutoría', category:'Académico', requires:'FUT + plan', sla:4, route:['unidad_academica','jefatura_academica']},
-  {id:'diploma_egresado', name:'Diploma de egresado', category:'Egreso', requires:'FUT + requisitos de egreso', sla:7, route:['secretaria_academica','tesoreria','jefatura_academica']},
-  {id:'tecnico_pedagogico', name:'Técnico pedagógico', category:'Académico', requires:'FUT + sustento', sla:5, route:['jefatura_academica']},
-  {id:'const_egresado', name:'Constancia de egresado', category:'Constancias', requires:'FUT + DNI', sla:3, route:['secretaria_academica']},
+  {id:'const_biblioteca', name:'Constancia de biblioteca', category:'Constancias', requires:'FUT + DNI', sla:2, route:['biblioteca'], monto:0},
+  {id:'iefsrt_egresado', name:'IEFSRT del egresado', category:'EFSRT', requires:'FUT + anexos', sla:4, route:['efsrt','jefatura_academica'], monto:0},
+  {id:'cert_modular', name:'Certificado modular', category:'Certificados', requires:'FUT + DNI', sla:5, route:['tesoreria','secretaria_academica','jefatura_academica'], monto:25},
+  {id:'examen_suficiencia', name:'Examen de suficiencia', category:'Académico', requires:'FUT + sustento', sla:5, route:['tesoreria','jefatura_academica','unidad_academica'], monto:30},
+  {id:'plan_tutoria', name:'Plan de consejería y tutoría', category:'Académico', requires:'FUT + plan', sla:4, route:['unidad_academica','jefatura_academica'], monto:0},
+  {id:'diploma_egresado', name:'Diploma de egresado', category:'Egreso', requires:'FUT + requisitos de egreso', sla:7, route:['secretaria_academica','tesoreria','jefatura_academica'], monto:150},
+  {id:'tecnico_pedagogico', name:'Técnico pedagógico', category:'Académico', requires:'FUT + sustento', sla:5, route:['jefatura_academica'], monto:0},
+  {id:'const_egresado', name:'Constancia de egresado', category:'Constancias', requires:'FUT + DNI', sla:3, route:['tesoreria','secretaria_academica'], monto:15},
 ]
+
+// Datos de pago institucional (dónde debe pagar el solicitante el derecho de trámite):
+// un solo destino compartido por todos los trámites con costo. El Administrador lo
+// edita en "Usuarios y catálogos → Trámites" antes de salir a producción; estos son
+// valores de ejemplo para el prototipo, NO datos reales de la institución.
+export const DEFAULT_PAYMENT_INFO = {
+  yape: '958 000 000',
+  titular: 'IESTP Alianza Renovada Ichuña Bélgica',
+  banco: 'Banco de la Nación',
+  cuenta: '00-000-000000',
+  cci: '018-000-000000000000-00',
+}
+export let PAYMENT_INFO = { ...DEFAULT_PAYMENT_INFO }
+export function setPaymentInfoCatalog(v){ PAYMENT_INFO = v }
 
 // Mutable catalogs: el prototipo permite a Administrador crear/editar/eliminar
 // oficinas y trámites en tiempo real (ver CatalogAdminView). App.jsx sincroniza
@@ -48,6 +62,7 @@ export const VIEW_CATALOG = [
   {id:'catalog', label:'Usuarios y catálogos'},
   {id:'work', label:'Mesa de trabajo (bandeja del rol)'},
   {id:'book', label:'Libro y auditoría'},
+  {id:'caja', label:'Caja y pagos'},
   {id:'portal', label:'Mi Mesa de Partes'},
   {id:'tracking', label:'Seguimiento'},
 ]
@@ -57,7 +72,7 @@ export const POSSIBLE_VIEWS_BY_ROLE = {
   secretaria:['work','book','tracking'],
   direccion:['work','book','tracking'],
   oficina:['work','book','tracking'],
-  admin:['control','workflow','catalog','book','tracking'],
+  admin:['control','workflow','catalog','book','caja','tracking'],
 }
 
 // Catálogo de permisos granulares (acciones concretas) que puede tener un rol.
@@ -75,6 +90,7 @@ export const PERMISSIONS_CATALOG = [
   {key:'case.attend', label:'Atender y completar pasos en oficina'},
   {key:'case.observe', label:'Observar expedientes'},
   {key:'case.forward', label:'Redirigir a otra oficina'},
+  {key:'case.pay', label:'Registrar pagos en Tesorería'},
   {key:'system.manage', label:'Administrar el sistema'},
   {key:'workflow.manage', label:'Administrar trámites y rutas'},
   {key:'users.manage', label:'Administrar usuarios'},
@@ -87,8 +103,8 @@ export const DEFAULT_ROLE_PERMISSIONS = {
   docente:{views:['portal','tracking'], permissions:['request.create','request.view_own','request.correct']},
   secretaria:{views:['work','book','tracking'], permissions:['case.register','case.receive','case.close','book.view']},
   direccion:{views:['work','tracking'], permissions:['case.proveido','route.choose','case.view']},
-  oficina:{views:['work','tracking'], permissions:['case.attend','case.observe','case.forward']},
-  admin:{views:['control','workflow','catalog','book','tracking'], permissions:['system.manage','workflow.manage','users.manage','audit.view','reports.view']},
+  oficina:{views:['work','tracking'], permissions:['case.attend','case.observe','case.forward','case.pay']},
+  admin:{views:['control','workflow','catalog','book','caja','tracking'], permissions:['system.manage','workflow.manage','users.manage','audit.view','reports.view']},
 }
 
 // Igual que OFFICES/PROCEDURES: el prototipo permite a Administrador reconfigurar

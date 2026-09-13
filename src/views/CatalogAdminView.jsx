@@ -1,9 +1,10 @@
-import React, { useState } from 'react'
-import { Plus, Pencil, Trash2, LockKeyhole, Building2, BookOpen, Users, Palette, CheckCircle2, ShieldCheck } from 'lucide-react'
+import React, { useEffect, useState } from 'react'
+import { Plus, Pencil, Trash2, LockKeyhole, Building2, BookOpen, Users, Palette, CheckCircle2, ShieldCheck, Wallet, History } from 'lucide-react'
 import { Panel, Badge, Modal, Field } from '../components/ui'
 import ProcedureFormModal from '../components/ProcedureFormModal'
 import UserAdminView from './UserAdminView'
 import RolePermissionsView from './RolePermissionsView'
+import AuditLogView from './AuditLogView'
 import { officeName } from '../data/catalogs'
 
 const emptyOffice = { name: '', short: '', color: '#0284c7' }
@@ -13,6 +14,8 @@ export default function CatalogAdminView({
   procedures,
   users,
   rolePermissions,
+  paymentInfo,
+  auditLog,
   onSaveOffice,
   onDeleteOffice,
   onSaveProcedure,
@@ -22,11 +25,15 @@ export default function CatalogAdminView({
   onResetPassword,
   onToggleUserActive,
   onImportStudents,
-  onSaveRolePermissions
+  onSaveRolePermissions,
+  onSavePaymentInfo
 }) {
   const [tab, setTab] = useState('oficinas')
   const [officeModal, setOfficeModal] = useState(null)
   const [procModal, setProcModal] = useState(null)
+  const [paymentForm, setPaymentForm] = useState(paymentInfo)
+
+  useEffect(() => { setPaymentForm(paymentInfo) }, [paymentInfo])
 
   const saveOffice = () => {
     if (!officeModal?.name?.trim()) return
@@ -37,6 +44,12 @@ export default function CatalogAdminView({
   const saveProcedure = data => {
     onSaveProcedure(data)
     setProcModal(null)
+  }
+
+  const paymentFormDirty = JSON.stringify(paymentForm) !== JSON.stringify(paymentInfo)
+  const savePaymentInfo = () => {
+    if (!paymentForm?.yape?.trim() && !paymentForm?.cuenta?.trim()) return
+    onSavePaymentInfo(paymentForm)
   }
 
   return (
@@ -82,7 +95,17 @@ export default function CatalogAdminView({
           <ShieldCheck size={16} style={{ marginRight: 6 }} />
           Roles y Permisos
         </button>
+        <button
+          className={tab === 'auditoria' ? 'active' : ''}
+          onClick={() => setTab('auditoria')}
+        >
+          <History size={16} style={{ marginRight: 6 }} />
+          Auditoría <i>{auditLog?.length || 0}</i>
+        </button>
       </div>
+
+      {/* Tab: Audit Log */}
+      {tab === 'auditoria' && <AuditLogView auditLog={auditLog} />}
 
       {/* Tab: Users */}
       {tab === 'usuarios' && (
@@ -203,6 +226,55 @@ export default function CatalogAdminView({
 
       {/* Tab: Procedures */}
       {tab === 'tramites' && (
+        <>
+        <Panel
+          title="Datos de pago institucional"
+          subtitle="Dónde debe pagar el solicitante el derecho de trámite (se muestra en el FUT virtual y en el seguimiento). Un solo destino, compartido por todos los trámites con costo."
+        >
+          <div className="form-grid two">
+            <Field label="Número Yape / Plin">
+              <input
+                value={paymentForm?.yape || ''}
+                onChange={e => setPaymentForm({ ...paymentForm, yape: e.target.value })}
+                placeholder="Ej. 958 000 000"
+              />
+            </Field>
+            <Field label="Titular de la cuenta">
+              <input
+                value={paymentForm?.titular || ''}
+                onChange={e => setPaymentForm({ ...paymentForm, titular: e.target.value })}
+                placeholder="Nombre de la institución o titular"
+              />
+            </Field>
+            <Field label="Banco">
+              <input
+                value={paymentForm?.banco || ''}
+                onChange={e => setPaymentForm({ ...paymentForm, banco: e.target.value })}
+                placeholder="Ej. Banco de la Nación"
+              />
+            </Field>
+            <Field label="N.° de cuenta">
+              <input
+                value={paymentForm?.cuenta || ''}
+                onChange={e => setPaymentForm({ ...paymentForm, cuenta: e.target.value })}
+                placeholder="Ej. 00-000-000000"
+              />
+            </Field>
+            <Field label="CCI (interbancario)">
+              <input
+                value={paymentForm?.cci || ''}
+                onChange={e => setPaymentForm({ ...paymentForm, cci: e.target.value })}
+                placeholder="Ej. 018-000-000000000000-00"
+              />
+            </Field>
+          </div>
+          <div style={{ textAlign: 'right', marginTop: 8 }}>
+            <button className="btn primary" disabled={!paymentFormDirty} onClick={savePaymentInfo}>
+              <Wallet size={16} /> Guardar datos de pago
+            </button>
+          </div>
+        </Panel>
+
         <Panel
           title="Catálogo General de Trámites"
           subtitle="Cada trámite define sus requisitos y su ruta inicial de derivación; Dirección General y el Administrador de Flujos pueden versionarla dinámicamente."
@@ -220,6 +292,7 @@ export default function CatalogAdminView({
                   <th>Categoría</th>
                   <th>Requisitos referenciales</th>
                   <th>Plazo (SLA)</th>
+                  <th>Costo</th>
                   <th>Ruta canónica de dependencias</th>
                   <th style={{ textAlign: 'right' }}>Acciones</th>
                 </tr>
@@ -238,6 +311,13 @@ export default function CatalogAdminView({
                     </td>
                     <td>
                       <Badge tone="info">{p.sla} días hábiles</Badge>
+                    </td>
+                    <td>
+                      {p.monto > 0 ? (
+                        <Badge tone="warning">S/ {Number(p.monto).toFixed(2)}</Badge>
+                      ) : (
+                        <Badge tone="success">Gratuito</Badge>
+                      )}
                     </td>
                     <td>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap', fontSize: 12 }}>
@@ -275,6 +355,7 @@ export default function CatalogAdminView({
             </table>
           </div>
         </Panel>
+        </>
       )}
 
       {/* Office Modal */}

@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { createVirtual,registerVirtual,issueProveido,observeAtOffice,correctObservation,completeOfficeStep,finalizeCase,validateWorkflowRoute,slaInfo,canDeleteOffice,canDeleteProcedure,authenticate,authenticateByEmail,redirectToOffice,routeProgress,validateRolePermissions } from '../src/workflowEngine.js'
+import { createVirtual,registerVirtual,issueProveido,observeAtOffice,correctObservation,completeOfficeStep,finalizeCase,validateWorkflowRoute,slaInfo,canDeleteOffice,canDeleteProcedure,authenticate,authenticateByEmail,redirectToOffice,routeProgress,validateRolePermissions,registerPayment,requiresPayment } from '../src/workflowEngine.js'
 import { procedureById } from '../src/data/catalogs.js'
 
 const base={procedureId:'const_biblioteca',ownerProfile:'estudiante',solicitante:'Demo',asunto:'Constancia',adjuntos:[],numeroFolios:1,fecha:'01/01/2026',hora:'08:00'}
@@ -111,6 +111,49 @@ test('el N.° de expediente se asigna desde el envío virtual, no al registrar',
  const r=registerVirtual(v,'08:05')
  assert.equal(r.numero,7001,'el número no cambia al registrar')
  assert.equal(routeProgress(r).completed,1,'tras el registro, el paso Mesa de Partes ya está completado')
+})
+
+test('Tesorería no puede completar un trámite pagado sin registrar el pago',()=>{
+ const paidBase={...base,procedureId:'cert_modular'}
+ const r=registerVirtual(createVirtual(paidBase,6001,'08:00'),'08:05')
+ const p=issueProveido(r,{proveido:'PASE',routePlan:['tesoreria','jefatura_academica'],routeVersion:1},'08:10')
+ assert.equal(requiresPayment(p),true)
+ assert.throws(()=>completeOfficeStep(p,{note:'Conforme'},'08:20'),/pago/i)
+ assert.throws(()=>registerPayment(p,{monto:0,voucher:'X'},'08:15'))
+ assert.throws(()=>registerPayment(p,{monto:25,voucher:''},'08:15'))
+ const paid=registerPayment(p,{monto:25,metodo:'Depósito bancario',voucher:'OP-001',fecha:'01/01/2026'},'08:15')
+ assert.equal(paid.pago.estado,'PAGADO');assert.equal(paid.pago.monto,25)
+ assert.equal(requiresPayment(paid),true,'el trámite sigue siendo de pago, pero ya está saldado')
+ const done=completeOfficeStep(paid,{note:'Conforme'},'08:20')
+ assert.equal(done.oficinaActual,'jefatura_academica')
+})
+
+test('registerPayment solo se registra en Tesorería y con el expediente en atención',()=>{
+ const paidBase={...base,procedureId:'cert_modular'}
+ const r=registerVirtual(createVirtual(paidBase,6001,'08:00'),'08:05')
+ const p=issueProveido(r,{proveido:'PASE',routePlan:['tesoreria','jefatura_academica'],routeVersion:1},'08:10')
+ const moved=completeOfficeStep(registerPayment(p,{monto:25,voucher:'OP-002'},'08:15'),{note:'Conforme'},'08:20')
+ assert.throws(()=>registerPayment(moved,{monto:25,voucher:'OP-003'},'08:25'),/Tesorería/)
+ const o=observeAtOffice(issueProveido(registerVirtual(createVirtual(paidBase,6002,'08:00'),'08:05'),{proveido:'PASE',routePlan:['tesoreria'],routeVersion:1},'08:10'),{text:'Falta comprobante'},'08:20')
+ assert.throws(()=>registerPayment(o,{monto:25,voucher:'OP-004'},'08:25'))
+})
+
+test('el SLA se pausa mientras hay observación o pago pendiente, y se reanuda al resolverse',()=>{
+ const paidBase={...base,procedureId:'cert_modular'}
+ const r=registerVirtual(createVirtual(paidBase,6001,'08:00'),'08:05')
+ const p=issueProveido(r,{proveido:'PASE',routePlan:['tesoreria'],routeVersion:1},'08:10')
+ assert.ok(p.pauseStartedAt!=null,'debe pausar el reloj al llegar a Tesorería sin pagar')
+ assert.equal(slaInfo(p).paused,true)
+ const paid=registerPayment(p,{monto:25,voucher:'OP-1'},'08:15')
+ assert.equal(paid.pauseStartedAt,null,'debe reanudar el reloj al registrar el pago')
+ assert.ok(paid.slaPausedMs>=0)
+ assert.equal(slaInfo(paid).paused,false)
+
+ const p2=issueProveido(registerVirtual(createVirtual(base,6002,'08:00'),'08:05'),{proveido:'PASE',routePlan:['biblioteca'],routeVersion:1},'08:10')
+ const o=observeAtOffice(p2,{text:'Falta firma'},'08:20')
+ assert.ok(o.pauseStartedAt!=null,'debe pausar el reloj mientras está observado')
+ const c=correctObservation(o,{files:[]},'08:30')
+ assert.equal(c.pauseStartedAt,null,'debe reanudar el reloj tras subsanar')
 })
 
 test('validateRolePermissions exige al menos una vista y protege el acceso del admin a catálogos',()=>{

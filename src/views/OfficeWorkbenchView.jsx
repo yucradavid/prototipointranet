@@ -2,10 +2,15 @@ import React, { useMemo, useState } from 'react'
 import {
   Building2, Search, CheckCircle2, AlertTriangle, ArrowRight, UploadCloud,
   Clock3, Shuffle, FileText, UserRound, ArrowLeftRight, Check, CornerDownRight,
-  ShieldAlert, Sparkles, MessageSquare, ExternalLink
+  ShieldAlert, Sparkles, MessageSquare, ExternalLink, Wallet, Receipt
 } from 'lucide-react'
 import { Panel, StatusBadge, SlaBadge, Badge, Empty, RouteStrip, Timeline, FileList, Modal, Field } from '../components/ui'
-import { officeName } from '../data/catalogs'
+import { officeName, procedureById } from '../data/catalogs'
+import ReciboPagoModal from '../components/ReciboPagoModal'
+import { fileToCompressedDataUrl, isDataUrl } from '../utils/imageUpload'
+
+const PAYMENT_METHODS = ['Yape / Plin', 'Tarjeta / POS', 'Depósito bancario', 'Transferencia', 'Efectivo en caja']
+const todayPE = () => new Intl.DateTimeFormat('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date())
 
 const QUICK_OBSERVATIONS = [
   'Adjuntar comprobante de pago legible.',
@@ -20,7 +25,7 @@ const QUICK_RESULTS = [
   'Paso operativo completado satisfactoriamente.'
 ]
 
-export default function OfficeWorkbenchView({ officeId, items, offices, permissions=[], onObserve, onComplete, onRedirect }) {
+export default function OfficeWorkbenchView({ officeId, items, offices, permissions=[], onObserve, onComplete, onRedirect, onRegisterPayment }) {
   const can=perm=>permissions.includes(perm)
   const [selectedId, setSelectedId] = useState(null)
   const [search, setSearch] = useState('')
@@ -32,6 +37,33 @@ export default function OfficeWorkbenchView({ officeId, items, offices, permissi
   const [redirectOpen, setRedirectOpen] = useState(false)
   const [redirectTarget, setRedirectTarget] = useState('')
   const [redirectNote, setRedirectNote] = useState('')
+  const [paymentOpen, setPaymentOpen] = useState(false)
+  const [payMonto, setPayMonto] = useState('')
+  const [payMetodo, setPayMetodo] = useState(PAYMENT_METHODS[0])
+  const [payVoucher, setPayVoucher] = useState('')
+  const [payFecha, setPayFecha] = useState(todayPE())
+  const [payComprobante, setPayComprobante] = useState('')
+  const [payFileName, setPayFileName] = useState('')
+  const [payFileError, setPayFileError] = useState('')
+  const [payFileBusy, setPayFileBusy] = useState(false)
+  const [reciboExp, setReciboExp] = useState(null)
+
+  const choosePayFile = async e => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setPayFileError('')
+    setPayFileBusy(true)
+    try {
+      const dataUrl = await fileToCompressedDataUrl(file)
+      setPayComprobante(dataUrl)
+      setPayFileName(file.name)
+    } catch (err) {
+      setPayFileError(err.message)
+    } finally {
+      setPayFileBusy(false)
+      e.target.value = ''
+    }
+  }
 
   const baseQueue = useMemo(() => {
     return items
@@ -46,12 +78,24 @@ export default function OfficeWorkbenchView({ officeId, items, offices, permissi
   }, [baseQueue, filter])
 
   const selected = items.find(x => x.id === selectedId) || queue[0]
+  const procedure = procedureById(selected?.procedureId)
+  const needsPayment = officeId === 'tesoreria' && (procedure?.monto || 0) > 0
+  const isPaid = selected?.pago?.estado === 'PAGADO'
+  const paymentPending = needsPayment && !isPaid
 
   React.useEffect(() => {
     setNote('Atención conforme.')
     setDoc('')
     setRedirectTarget('')
     setRedirectNote('')
+    setPayMonto(procedure?.monto ? String(procedure.monto) : '')
+    setPayVoucher('')
+    setPayMetodo(PAYMENT_METHODS[0])
+    setPayFecha(todayPE())
+    const studentAttachment = selected?.adjuntos?.find(a => a.name === 'Comprobante de pago')
+    setPayComprobante(studentAttachment?.url || '')
+    setPayFileName(studentAttachment && isDataUrl(studentAttachment.url) ? (studentAttachment.size || 'Comprobante del solicitante') : '')
+    setPayFileError('')
   }, [selected?.id, officeId])
 
   const next = selected?.routePlan?.[selected.routeIndex + 1]
@@ -77,6 +121,15 @@ export default function OfficeWorkbenchView({ officeId, items, offices, permissi
     if (!redirectTarget) return
     onRedirect(selected, { officeId: redirectTarget, note: redirectNote })
     setRedirectOpen(false)
+  }
+
+  const submitPayment = () => {
+    if (!(Number(payMonto) > 0) || !payVoucher.trim()) return
+    const result = onRegisterPayment(selected, { monto: payMonto, metodo: payMetodo, voucher: payVoucher, fecha: payFecha, comprobante: payComprobante })
+    if (result) {
+      setPaymentOpen(false)
+      setReciboExp(result)
+    }
   }
 
   const currentOfficeObj = offices?.find(o => o.id === officeId)
@@ -269,6 +322,72 @@ export default function OfficeWorkbenchView({ officeId, items, offices, permissi
                     <FileList files={selected.adjuntos} />
                   </div>
 
+                  {/* Payment / Caja box (only for Tesorería on paid procedures) */}
+                  {needsPayment && (
+                    <div
+                      className="observation-card"
+                      style={{
+                        background: isPaid ? 'var(--arib-success-subtle, #f0fdf4)' : 'var(--arib-warning-subtle, #fffbeb)',
+                        borderColor: isPaid ? '#86efac' : '#fde68a',
+                        marginBottom: 16
+                      }}
+                    >
+                      <Wallet size={24} style={{ color: isPaid ? '#16a34a' : '#b45309', flexShrink: 0 }} />
+                      <div style={{ flex: 1 }}>
+                        {isPaid ? (
+                          <>
+                            <b style={{ color: '#16a34a', fontSize: 14 }}>
+                              Pago conforme · S/ {Number(selected.pago.monto).toFixed(2)}
+                            </b>
+                            <p style={{ margin: '6px 0 0', fontSize: 12, color: '#166534' }}>
+                              {selected.pago.metodo} · Voucher {selected.pago.voucher} · {selected.pago.fecha}
+                            </p>
+                            {selected.pago.comprobante && (
+                              <a
+                                href={selected.pago.comprobante}
+                                target="_blank"
+                                rel="noreferrer"
+                                style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#0284c7', marginTop: 4 }}
+                              >
+                                Ver evidencia del pago
+                              </a>
+                            )}
+                          </>
+                        ) : (
+                          <>
+                            <b style={{ color: '#b45309', fontSize: 14 }}>
+                              Pago pendiente · S/ {Number(procedure?.monto || 0).toFixed(2)}
+                            </b>
+                            <p style={{ margin: '6px 0 0', fontSize: 12, color: '#92400e' }}>
+                              Este trámite requiere el pago del derecho de trámite. No se puede completar el paso hasta registrarlo.
+                            </p>
+                            {payComprobante && (
+                              <a
+                                href={payComprobante}
+                                target="_blank"
+                                rel="noreferrer"
+                                style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#0284c7', marginTop: 4 }}
+                              >
+                                El solicitante adjuntó un comprobante — verifícalo antes de registrar
+                              </a>
+                            )}
+                          </>
+                        )}
+                      </div>
+                      {isPaid ? (
+                        <button className="btn soft" onClick={() => setReciboExp(selected)}>
+                          <Receipt size={16} /> Ver recibo
+                        </button>
+                      ) : (
+                        can('case.pay') && (
+                          <button className="btn primary" onClick={() => setPaymentOpen(true)}>
+                            <Wallet size={16} /> Registrar pago
+                          </button>
+                        )
+                      )}
+                    </div>
+                  )}
+
                   {/* Primary Operational Action Box */}
                   <div className="office-action-card" style={{ borderLeft: `4px solid ${officeColor}`, background: 'var(--arib-surface-card)' }}>
                     <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 14 }}>
@@ -364,7 +483,12 @@ export default function OfficeWorkbenchView({ officeId, items, offices, permissi
                       </div>
 
                       {can('case.attend') && (
-                        <button className="btn primary big" onClick={complete}>
+                        <button
+                          className="btn primary big"
+                          onClick={complete}
+                          disabled={paymentPending}
+                          title={paymentPending ? 'Registra el pago del derecho de trámite antes de completar este paso.' : undefined}
+                        >
                           <ArrowRight size={18} /> {next ? `Completar y derivar a ${officeName(next)}` : 'Completar último paso y cerrar ruta'}
                         </button>
                       )}
@@ -486,6 +610,77 @@ export default function OfficeWorkbenchView({ officeId, items, offices, permissi
           />
         </Field>
       </Modal>
+
+      {/* Payment Registration Modal */}
+      <Modal
+        open={paymentOpen}
+        onClose={() => setPaymentOpen(false)}
+        title="Registrar pago del derecho de trámite"
+        subtitle="Verifica el comprobante presentado por el usuario (depósito, transferencia o efectivo) y registra los datos exactos del pago."
+        size="md"
+        footer={
+          <>
+            <button className="btn ghost" onClick={() => setPaymentOpen(false)}>
+              Cancelar
+            </button>
+            <button className="btn primary" disabled={!(Number(payMonto) > 0) || !payVoucher.trim() || payFileBusy} onClick={submitPayment}>
+              <Wallet size={16} /> Registrar pago
+            </button>
+          </>
+        }
+      >
+        <div className="form-grid two" style={{ marginBottom: 4 }}>
+          <Field label="Monto pagado (S/)" required hint={`Tarifa del trámite: S/ ${Number(procedure?.monto || 0).toFixed(2)}`}>
+            <input type="number" min="0" step="0.5" value={payMonto} onChange={e => setPayMonto(e.target.value)} />
+          </Field>
+          <Field label="Método de pago" required>
+            <select value={payMetodo} onChange={e => setPayMetodo(e.target.value)}>
+              {PAYMENT_METHODS.map(m => <option key={m} value={m}>{m}</option>)}
+            </select>
+          </Field>
+          <Field label="N.° de operación / voucher" required>
+            <input
+              value={payVoucher}
+              onChange={e => setPayVoucher(e.target.value)}
+              placeholder="Ej. 0045-8871-2201"
+            />
+          </Field>
+          <Field label="Fecha de pago" required>
+            <input value={payFecha} onChange={e => setPayFecha(e.target.value)} placeholder="dd/mm/aaaa" />
+          </Field>
+        </div>
+        <Field
+          label="Evidencia del pago (opcional)"
+          hint="Si el solicitante ya subió su comprobante, aquí aparece automáticamente. También puedes escanear/fotografiar un voucher físico (ej. pago en efectivo) y subirlo tú mismo."
+        >
+          <label className="dropzone" style={{ padding: 12 }}>
+            <UploadCloud size={20} />
+            <b>{payFileBusy ? 'Procesando archivo…' : (payFileName || 'Subir foto o captura del comprobante')}</b>
+            <span>Formatos: JPG, PNG o PDF · Máximo 15 MB</span>
+            <input type="file" accept="image/*,.pdf" disabled={payFileBusy} onChange={choosePayFile} />
+          </label>
+          {payFileError && <div className="login-error">{payFileError}</div>}
+          {isDataUrl(payComprobante) && payComprobante.startsWith('data:image') && (
+            <img
+              src={payComprobante}
+              alt="Vista previa del comprobante"
+              style={{ maxWidth: 140, borderRadius: 8, marginTop: 8, border: '1px solid var(--arib-border)', display: 'block' }}
+            />
+          )}
+          <div style={{ marginTop: 10 }}>
+            <span style={{ fontSize: 11, color: 'var(--arib-navy-light)', display: 'block', marginBottom: 4 }}>
+              o pega un enlace de Google Drive:
+            </span>
+            <input
+              value={isDataUrl(payComprobante) ? '' : payComprobante}
+              onChange={e => { setPayComprobante(e.target.value); setPayFileName('') }}
+              placeholder="Enlace de Google Drive con la captura o foto del comprobante"
+            />
+          </div>
+        </Field>
+      </Modal>
+
+      <ReciboPagoModal exp={reciboExp} onClose={() => setReciboExp(null)} />
     </div>
   )
 }

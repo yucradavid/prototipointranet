@@ -1,7 +1,7 @@
 import React from 'react'
-import { X, CheckCircle2, AlertTriangle, Info, Clock3, FileText, ChevronRight, Circle, ExternalLink, HardDrive } from 'lucide-react'
+import { X, CheckCircle2, AlertTriangle, Info, Clock3, FileText, ChevronRight, Circle, ExternalLink, HardDrive, Wallet, Receipt, ShieldCheck } from 'lucide-react'
 import { statusLabel, statusTone } from '../models/expediente'
-import { officeName } from '../data/catalogs'
+import { officeName, procedureById, PAYMENT_INFO } from '../data/catalogs'
 import { routeProgress, slaInfo } from '../workflowEngine'
 
 export function Badge({children,tone='neutral'}){
@@ -16,9 +16,46 @@ export function StatusBadge({status}){
 export function SlaBadge({exp}){
   const info=exp&&slaInfo(exp)
   if(!info||info.closed) return null
+  if(info.paused) return <Badge tone="info"><Clock3 size={12}/> SLA pausado</Badge>
   if(info.overdue) return <Badge tone="danger"><Clock3 size={12}/> Vencido {Math.abs(info.daysLeft)}d</Badge>
   if(info.daysLeft<=1) return <Badge tone="warning"><Clock3 size={12}/> Vence hoy</Badge>
   return <Badge tone="neutral"><Clock3 size={12}/> Vence en {info.daysLeft}d</Badge>
+}
+
+export function PaymentStatusCard({exp,onViewReceipt}){
+  const proc=exp&&procedureById(exp.procedureId)
+  if(!proc?.monto) return null
+  const isPaid=exp.pago?.estado==='PAGADO'
+  return (
+    <div className={`payment-status-card ${isPaid?'paid':'pending'}`}>
+      {isPaid ? <ShieldCheck size={22} style={{flex:'none'}}/> : <Wallet size={22} style={{flex:'none'}}/>}
+      <div>
+        {isPaid ? (
+          <>
+            <b>Pago confirmado por Tesorería</b>
+            <p>
+              Se registró tu pago de <strong>S/ {Number(exp.pago.monto).toFixed(2)}</strong> el {exp.pago.fecha} mediante {exp.pago.metodo}.
+              Tu trámite continúa su proceso con normalidad.
+            </p>
+          </>
+        ) : (
+          <>
+            <b>Este trámite requiere un pago de S/ {Number(proc.monto).toFixed(2)}</b>
+            <p>
+              Aún no se ha registrado tu pago en Tesorería. Puedes pagar por Yape al <strong>{PAYMENT_INFO.yape}</strong> o
+              por depósito/transferencia a la cuenta <strong>{PAYMENT_INFO.cuenta}</strong> ({PAYMENT_INFO.banco}) a nombre
+              de {PAYMENT_INFO.titular}, y presentar tu comprobante cuando tu expediente llegue a esa oficina.
+            </p>
+          </>
+        )}
+      </div>
+      {isPaid && onViewReceipt && (
+        <button className="btn soft" onClick={onViewReceipt}>
+          <Receipt size={15}/> Ver recibo
+        </button>
+      )}
+    </div>
+  )
 }
 
 export function Panel({title,subtitle,actions,children,className=''}){

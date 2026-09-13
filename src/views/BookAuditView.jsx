@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react'
 import { Search, Download, BookOpen, FileText, CheckCircle2, UserRound, ShieldCheck, Clock3, Eye } from 'lucide-react'
 import { Panel, StatusBadge, SlaBadge, Badge, Empty, Timeline } from '../components/ui'
-import { officeName } from '../data/catalogs'
+import { officeName, procedureById } from '../data/catalogs'
 import { slaInfo } from '../workflowEngine'
 
 export default function BookAuditView({ items }) {
@@ -17,6 +17,12 @@ export default function BookAuditView({ items }) {
 
   const selected = items.find(x => x.id === selectedId) || rows[0]
 
+  const paymentLabel = x => {
+    const monto = procedureById(x.procedureId)?.monto || 0
+    if (!monto) return 'Gratuito'
+    return x.pago?.estado === 'PAGADO' ? `Pagado (S/ ${Number(x.pago.monto).toFixed(2)})` : `Pendiente (S/ ${Number(monto).toFixed(2)})`
+  }
+
   const exportCsv = () => {
     const header = [
       'N Exp',
@@ -30,6 +36,7 @@ export default function BookAuditView({ items }) {
       'VB Direccion',
       'Oficina actual',
       'Estado',
+      'Pago',
       'Vencido SLA'
     ]
     const data = rows.map(x => [
@@ -44,6 +51,7 @@ export default function BookAuditView({ items }) {
       x.vistoBuenoDireccion,
       officeName(x.oficinaActual),
       x.estado,
+      paymentLabel(x),
       slaInfo(x)?.overdue ? 'Sí' : 'No'
     ])
     const csv = [header, ...data]
@@ -102,6 +110,7 @@ export default function BookAuditView({ items }) {
                   <th>V°B° Dir.</th>
                   <th>Ubicación</th>
                   <th>Estado</th>
+                  <th>Pago</th>
                   <th>SLA</th>
                 </tr>
               </thead>
@@ -155,6 +164,15 @@ export default function BookAuditView({ items }) {
                     <td style={{ fontSize: 12, fontWeight: 600 }}>{officeName(x.oficinaActual)}</td>
                     <td>
                       <StatusBadge status={x.estado} />
+                    </td>
+                    <td>
+                      {(() => {
+                        const monto = procedureById(x.procedureId)?.monto || 0
+                        if (!monto) return <Badge tone="neutral">Gratuito</Badge>
+                        return x.pago?.estado === 'PAGADO'
+                          ? <Badge tone="success">Pagado S/ {Number(x.pago.monto).toFixed(2)}</Badge>
+                          : <Badge tone="warning">Pendiente S/ {Number(monto).toFixed(2)}</Badge>
+                      })()}
                     </td>
                     <td>
                       <SlaBadge exp={x} />

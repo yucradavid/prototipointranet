@@ -28,16 +28,17 @@ const fixedData = {
   end: { kind: 'end', label: 'Mesa de Partes', subtitle: 'Cierre y Notificación', locked: true, color: '#10b981' }
 }
 
-const officeData = (id, offices) => ({
+const officeData = (id, offices, onDelete) => ({
   kind: 'office',
   label: officeName(id),
   subtitle: 'Paso Especializado',
   officeId: id,
   locked: false,
-  color: offices.find(x => x.id === id)?.color || '#6366f1'
+  color: offices.find(x => x.id === id)?.color || '#6366f1',
+  onDelete
 })
 
-function layoutForRoute(route, offices) {
+function layoutForRoute(route, offices, onDelete) {
   const ids = ['start', 'direccion', ...route.map((x, i) => `office-${x}-${i}`), 'end']
   const nodes = ids.map((id, i) => {
     const isOffice = id.startsWith('office-')
@@ -46,7 +47,7 @@ function layoutForRoute(route, offices) {
       id,
       type: 'route',
       position: { x: 50 + i * 240, y: i % 2 ? 190 : 100 },
-      data: isOffice ? officeData(officeId, offices) : fixedData[id],
+      data: isOffice ? officeData(officeId, offices, onDelete) : fixedData[id],
       deletable: isOffice
     }
   })
@@ -91,8 +92,34 @@ function extractRoute(nodes, edges) {
   throw new Error('No se encontró el nodo final de cierre de ruta.')
 }
 
-function Designer({ procedureId, config, offices, onPublish }) {
-  const initial = useMemo(() => layoutForRoute(config.route, offices), [procedureId])
+function Designer({ procedureId, config, offices, monto, onPublish }) {
+  // Referencia estable: los nodos se construyen en varios momentos (carga inicial,
+  // cambio de trámite, soltar una oficina nueva) y todos deben recibir la MISMA
+  // función de borrado, así que se define antes y se pasa explícitamente.
+  const removeNode = useCallback(nodeId => {
+    setNodes(ns => ns.filter(n => n.id !== nodeId))
+    setEdges(es => {
+      const incoming = es.find(e => e.target === nodeId)
+      const outgoing = es.find(e => e.source === nodeId)
+      const remaining = es.filter(e => e.source !== nodeId && e.target !== nodeId)
+      // Al quitar una oficina de en medio de la ruta, reconecta automáticamente
+      // el paso anterior con el siguiente, igual que hacen las listas de rutas
+      // (ProcedureFormModal, proveído de Dirección) al remover un ítem.
+      if (incoming && outgoing) {
+        remaining.push({
+          id: `e-${incoming.source}-${outgoing.target}-${Date.now()}`,
+          source: incoming.source,
+          target: outgoing.target,
+          ...edgeStyle,
+          deletable: incoming.source !== 'start'
+        })
+      }
+      return remaining
+    })
+    setMessage('Oficina quitada del lienzo. El recorrido se reconectó automáticamente; recuerda "Publicar nueva versión" para guardar el cambio.')
+  }, [])
+
+  const initial = useMemo(() => layoutForRoute(config.route, offices, removeNode), [procedureId])
   const [nodes, setNodes, onNodesChange] = useNodesState(initial.nodes)
   const [edges, setEdges, onEdgesChange] = useEdgesState(initial.edges)
   const { screenToFlowPosition } = useReactFlow()
@@ -100,12 +127,17 @@ function Designer({ procedureId, config, offices, onPublish }) {
   const [simulation, setSimulation] = useState({ path: [], index: -1 })
 
   useEffect(() => {
-    const x = layoutForRoute(config.route, offices)
+    // Solo reconstruir el lienzo al cambiar de TRÁMITE. No incluir config.version aquí:
+    // publicar desde este mismo diseñador ya deja el lienzo en el estado correcto, y
+    // volver a montarlo desde config.route borraría el mensaje de éxito recién mostrado
+    // (y reordenaría los nodos que el usuario acaba de acomodar).
+    const x = layoutForRoute(config.route, offices, removeNode)
     setNodes(x.nodes)
     setEdges(x.edges)
     setMessage('')
     setSimulation({ path: [], index: -1 })
-  }, [procedureId, config.version])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [procedureId])
 
   const onConnect = useCallback(
     params => setEdges(es => addEdge({ ...params, ...edgeStyle, id: `e-${Date.now()}` }, es)),
@@ -119,7 +151,7 @@ function Designer({ procedureId, config, offices, onPublish }) {
       if (!officeId) return
       const id = `office-${officeId}-${Date.now()}`
       const position = screenToFlowPosition({ x: e.clientX, y: e.clientY })
-      setNodes(ns => [...ns, { id, type: 'route', position, data: officeData(officeId, offices), deletable: true }])
+      setNodes(ns => [...ns, { id, type: 'route', position, data: officeData(officeId, offices, removeNode), deletable: true }])
       setMessage(`${officeName(officeId)} agregado al lienzo. Conéctalo arrastrando desde el conector derecho de la oficina previa.`)
     },
     [setNodes, screenToFlowPosition, offices]
@@ -143,7 +175,10 @@ function Designer({ procedureId, config, offices, onPublish }) {
       const errs = validateWorkflowRoute(route)
       if (errs.length) throw new Error(errs[0])
       onPublish(procedureId, route)
-      setMessage(`Publicada exitosamente nueva versión (v${(config.version || 1) + 1}) con ruta: ${route.map(officeName).join(' → ')}`)
+      const paymentWarning = monto > 0 && !route.includes('tesoreria')
+        ? ' ⚠ Este trámite tiene costo y esta ruta no incluye Tesorería: nadie validará el pago.'
+        : ''
+      setMessage(`Publicada exitosamente nueva versión (v${(config.version || 1) + 1}) con ruta: ${route.map(officeName).join(' → ')}${paymentWarning}`)
     } catch (err) {
       setMessage(err.message)
     }
@@ -251,8 +286,8 @@ function Designer({ procedureId, config, offices, onPublish }) {
         </div>
 
         {message && (
-          <div className={`designer-message ${message.includes('Publicada') || message.includes('auto-alineada') ? 'ok' : ''}`}>
-            {message.includes('Publicada') || message.includes('auto-alineada') ? (
+          <div className={`designer-message ${(message.includes('Publicada') || message.includes('auto-alineada')) && !message.includes('⚠') ? 'ok' : ''}`}>
+            {(message.includes('Publicada') || message.includes('auto-alineada')) && !message.includes('⚠') ? (
               <CheckCircle2 size={16} />
             ) : (
               <AlertTriangle size={16} />
@@ -372,7 +407,7 @@ export default function WorkflowAdminView({
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <b style={{ color: 'var(--arib-navy)', fontSize: 13 }}>{x.name}</b>
                   <span style={{ fontSize: 12, color: 'var(--arib-navy-light)' }}>
-                    {x.category} · SLA <strong>{x.sla}d</strong>
+                    {x.category} · SLA <strong>{x.sla}d</strong>{x.monto > 0 ? ` · S/ ${Number(x.monto).toFixed(2)}` : ''}
                   </span>
                 </div>
                 <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
@@ -416,7 +451,7 @@ export default function WorkflowAdminView({
                     Ruta canónica en producción:
                   </span>
                   <span style={{ fontSize: 11, color: 'var(--arib-navy-light)' }}>
-                    SLA oficial: <b>{p.sla} días hábiles</b>
+                    SLA oficial: <b>{p.sla} días hábiles</b>{p.monto > 0 ? <> · Costo: <b>S/ {Number(p.monto).toFixed(2)}</b></> : ''}
                   </span>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
@@ -436,12 +471,26 @@ export default function WorkflowAdminView({
                 </div>
               </div>
 
+              {p.monto > 0 && !config.route.includes('tesoreria') && (
+                <div className="rule-banner" style={{ marginBottom: 16 }}>
+                  <AlertTriangle size={20} color="var(--arib-warning, #f59e0b)" style={{ flex: 'none' }} />
+                  <div>
+                    <b>Ruta publicada sin paso de Tesorería</b>
+                    <span>
+                      Este trámite tiene un costo de S/ {Number(p.monto).toFixed(2)}, pero la ruta actualmente publicada (v{config.version || 1}) no incluye Tesorería —
+                      nadie va a validar el pago cuando Dirección use esta plantilla. Agrega Tesorería al lienzo y publica una nueva versión si esto no es intencional.
+                    </span>
+                  </div>
+                </div>
+              )}
+
               {/* ReactFlow Canvas */}
               <ReactFlowProvider>
                 <Designer
                   procedureId={p.id}
                   config={config}
                   offices={offices}
+                  monto={p.monto}
                   onPublish={onPublish}
                 />
               </ReactFlowProvider>
