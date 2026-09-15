@@ -7,7 +7,7 @@ import RolePermissionsView from './RolePermissionsView'
 import AuditLogView from './AuditLogView'
 import { officeName } from '../data/catalogs'
 
-const emptyOffice = { name: '', short: '', color: '#0284c7' }
+const emptyOffice = { name: '', short: '', color: '#0284c7', roleTitle: 'Encargado' }
 
 export default function CatalogAdminView({
   offices,
@@ -391,6 +391,16 @@ export default function CatalogAdminView({
                 maxLength={8}
                 onChange={e => setOfficeModal({ ...officeModal, short: e.target.value.toUpperCase() })}
                 placeholder="Ej. UBE"
+              />
+            </Field>
+            <Field
+              label="Cargo de quien la atiende"
+              hint='Cómo se le llama en la institución (ej. "Administrador", "Encargado", "Jefe de Área"). Se muestra como "[Cargo] de [Oficina]".'
+            >
+              <input
+                value={officeModal.roleTitle || ''}
+                onChange={e => setOfficeModal({ ...officeModal, roleTitle: e.target.value })}
+                placeholder="Encargado"
               />
             </Field>
             <Field label="Color representativo en interfaz" required hint="Se usará en los nodos y badges de ruta">

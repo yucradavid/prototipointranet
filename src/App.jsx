@@ -6,6 +6,7 @@ import ApplicantPortalView from './views/ApplicantPortalView'
 import SecretariaWorkbenchView from './views/SecretariaWorkbenchView'
 import DireccionWorkbenchView from './views/DireccionWorkbenchView'
 import OfficeWorkbenchView from './views/OfficeWorkbenchView'
+import AdminOfficeOperationsView from './views/AdminOfficeOperationsView'
 import AdminControlView from './views/AdminControlView'
 import WorkflowAdminView from './views/WorkflowAdminView'
 import CatalogAdminView from './views/CatalogAdminView'
@@ -13,7 +14,7 @@ import BookAuditView from './views/BookAuditView'
 import CashReportView from './views/CashReportView'
 import TrackingView from './views/TrackingView'
 import LoginView from './views/LoginView'
-import { slugify, setOfficesCatalog, setProceduresCatalog, setRolePermissionsCatalog, setPaymentInfoCatalog, officeName, procedureById, roleViews, rolePerms } from './data/catalogs'
+import { slugify, setOfficesCatalog, setProceduresCatalog, setRolePermissionsCatalog, setPaymentInfoCatalog, officeName, procedureById, roleViews, rolePerms, roleLabel, PROFILES } from './data/catalogs'
 import { parseStudentsCsv } from './data/userImport'
 import { loadExpedientes,saveExpedientes,loadWorkflows,saveWorkflows,loadOffices,saveOffices,loadProcedures,saveProcedures,loadUsers,saveUsers,loadRolePermissions,saveRolePermissions,loadPaymentInfo,savePaymentInfo,loadAuditLog,saveAuditLog,loadSession,saveSession,clearSession,resetAll,nextNumero } from './repositories/prototypeRepository'
 import { createVirtual,registerVirtual,createPhysical,issueProveido,observeAtOffice,correctObservation,completeOfficeStep,finalizeCase,validateWorkflowRoute,validateRolePermissions,slaInfo,canDeleteOffice,canDeleteProcedure,authenticate,authenticateByEmail,redirectToOffice,registerPayment } from './workflowEngine'
@@ -51,6 +52,9 @@ export default function App(){
   const notify=(message,type='success')=>{setToast({message,type});clearTimeout(window.__aribToast);window.__aribToast=setTimeout(()=>setToast({message:'',type}),2600)}
   const askConfirm=(message,onConfirm,opts={})=>setConfirmState({message,onConfirm,confirmLabel:opts.confirmLabel||'Confirmar',danger:opts.danger!==false})
   const logAction=(action,detail)=>setAuditLog(curr=>[{time:`${today()} ${time()}`,actor:currentUser?.fullName||'Administrador',action,detail},...curr])
+  // Quién realmente hizo la acción sobre un expediente, para el historial/trazabilidad:
+  // nombre real + cargo si hay una cuenta real detrás, o el perfil de demostración si no.
+  const actorLabel=()=>currentUser?`${currentUser.fullName} (${roleLabel(currentUser)})`:(PROFILES.find(p=>p.id===profileId)?.label||profileId)
   const update=(id,fn)=>{
     const target=items.find(x=>x.id===id)
     if(!target)return null
@@ -59,23 +63,23 @@ export default function App(){
     setItems(curr=>curr.map(x=>x.id===id?result:x))
     return result
   }
-  const onCreateVirtual=data=>{const n=nextNumero(items);const exp=createVirtual({...data,fecha:today(),hora:time()},n,time());setItems(c=>[exp,...c]);notify(`Solicitud enviada. N.° de expediente ${n}`);return exp}
-  const onRegisterVirtual=exp=>{const result=update(exp.id,x=>registerVirtual(x,time()));if(result)notify(`Expediente ${result.numero} validado y enviado a Dirección`);return result}
-  const onCreatePhysical=data=>{const n=nextNumero(items);try{const exp=createPhysical({...data,fecha:today(),hora:time()},n,time());setItems(c=>[exp,...c]);notify(`Expediente físico ${n} registrado y remitido a Dirección`);return exp}catch(err){notify(err.message,'error');return null}}
-  const onProveido=(exp,payload)=>{update(exp.id,x=>issueProveido(x,payload,time()));notify(`Proveído emitido. Ruta activada para EXP ${exp.numero}`)}
-  const onObserve=(exp,payload)=>{update(exp.id,x=>observeAtOffice(x,payload,time()));notify(`Observación enviada al solicitante`)}
-  const onCorrect=(exp,payload)=>{update(exp.id,x=>correctObservation(x,payload,time()));notify(`Subsanación registrada y devuelta a la oficina observadora`)}
-  const onComplete=(exp,payload)=>{const result=update(exp.id,x=>completeOfficeStep(x,payload,time()));if(result)notify(result.estado==='RESPUESTA_MESA'?'Ruta completada; expediente devuelto a Mesa de Partes':`Paso completado; expediente enviado al siguiente punto`)}
-  const onFinalize=exp=>{update(exp.id,x=>finalizeCase(x,time()));notify(`EXP ${exp.numero} finalizado`)}
-  const onRedirect=(exp,payload)=>{update(exp.id,x=>redirectToOffice(x,payload,time()));notify(`Expediente redirigido a otra oficina`)}
-  const onRegisterPayment=(exp,payload)=>{const result=update(exp.id,x=>registerPayment(x,payload,time()));if(result)notify(`Pago de S/ ${Number(payload.monto).toFixed(2)} registrado para EXP ${result.numero}`);return result}
+  const onCreateVirtual=data=>{const n=nextNumero(items);const exp=createVirtual({...data,fecha:today(),hora:time()},n,time(),actorLabel());setItems(c=>[exp,...c]);notify(`Solicitud enviada. N.° de expediente ${n}`);return exp}
+  const onRegisterVirtual=exp=>{const result=update(exp.id,x=>registerVirtual(x,time(),actorLabel()));if(result)notify(`Expediente ${result.numero} validado y enviado a Dirección`);return result}
+  const onCreatePhysical=data=>{const n=nextNumero(items);try{const exp=createPhysical({...data,fecha:today(),hora:time()},n,time(),actorLabel());setItems(c=>[exp,...c]);notify(`Expediente físico ${n} registrado y remitido a Dirección`);return exp}catch(err){notify(err.message,'error');return null}}
+  const onProveido=(exp,payload)=>{update(exp.id,x=>issueProveido(x,payload,time(),actorLabel()));notify(`Proveído emitido. Ruta activada para EXP ${exp.numero}`)}
+  const onObserve=(exp,payload)=>{update(exp.id,x=>observeAtOffice(x,payload,time(),actorLabel()));notify(`Observación enviada al solicitante`)}
+  const onCorrect=(exp,payload)=>{update(exp.id,x=>correctObservation(x,payload,time(),actorLabel()));notify(`Subsanación registrada y devuelta a la oficina observadora`)}
+  const onComplete=(exp,payload)=>{const result=update(exp.id,x=>completeOfficeStep(x,payload,time(),actorLabel()));if(result)notify(result.estado==='RESPUESTA_MESA'?'Ruta completada; expediente devuelto a Mesa de Partes':`Paso completado; expediente enviado al siguiente punto`)}
+  const onFinalize=exp=>{update(exp.id,x=>finalizeCase(x,time(),actorLabel()));notify(`EXP ${exp.numero} finalizado`)}
+  const onRedirect=(exp,payload)=>{update(exp.id,x=>redirectToOffice(x,payload,time(),actorLabel()));notify(`Expediente redirigido a otra oficina`)}
+  const onRegisterPayment=(exp,payload)=>{const result=update(exp.id,x=>registerPayment(x,payload,time(),actorLabel()));if(result)notify(`Pago de S/ ${Number(payload.monto).toFixed(2)} registrado para EXP ${result.numero}`);return result}
   const onPublishWorkflow=(procedureId,route)=>{setWorkflows(w=>({...w,[procedureId]:{...(w[procedureId]||{}),route:[...route],version:(w[procedureId]?.version||0)+1,status:'PUBLICADO',updatedAt:'Ahora'}}));notify('Nueva versión de ruta publicada')}
 
   const onSaveOffice=data=>{
     const isNew=!data.id
     const id=data.id||slugify(data.name)
     if(isNew&&offices.some(o=>o.id===id)){notify('Ya existe una oficina con un nombre muy similar.','error');return}
-    const office={id,name:data.name.trim(),short:(data.short||'').trim().toUpperCase()||id.slice(0,3).toUpperCase(),color:data.color||'#0788d1'}
+    const office={id,name:data.name.trim(),short:(data.short||'').trim().toUpperCase()||id.slice(0,3).toUpperCase(),color:data.color||'#0788d1',roleTitle:(data.roleTitle||'').trim()||'Encargado'}
     setOffices(curr=>isNew?[...curr,office]:curr.map(o=>o.id===id?office:o))
     logAction(isNew?'Oficina creada':'Oficina actualizada',office.name)
     notify(isNew?'Oficina creada':'Oficina actualizada')
@@ -225,7 +229,7 @@ export default function App(){
   else if(profileId==='secretaria') content=activeView==='book'?<BookAuditView items={items}/>:activeView==='tracking'?<TrackingView items={items}/>:<SecretariaWorkbenchView items={items} procedures={procedures} permissions={myPermissions} onRegisterVirtual={onRegisterVirtual} onCreatePhysical={onCreatePhysical} onFinalize={onFinalize}/>
   else if(profileId==='direccion') content=activeView==='book'?<BookAuditView items={items}/>:activeView==='tracking'?<TrackingView items={items}/>:<DireccionWorkbenchView items={items} workflows={workflows} offices={offices} permissions={myPermissions} onProveido={onProveido}/>
   else if(profileId==='oficina') content=activeView==='book'?<BookAuditView items={items}/>:activeView==='tracking'?<TrackingView items={items}/>:<OfficeWorkbenchView officeId={officeId} items={items} offices={offices} permissions={myPermissions} onObserve={onObserve} onComplete={onComplete} onRedirect={onRedirect} onRegisterPayment={onRegisterPayment}/>
-  else content=activeView==='workflow'?<WorkflowAdminView workflows={workflows} offices={offices} procedures={procedures} onPublish={onPublishWorkflow} onSaveProcedure={onSaveProcedure} onDeleteProcedure={onDeleteProcedure}/>:activeView==='catalog'?<CatalogAdminView offices={offices} procedures={procedures} users={users} rolePermissions={rolePermissions} paymentInfo={paymentInfo} auditLog={auditLog} onSaveOffice={onSaveOffice} onDeleteOffice={onDeleteOffice} onSaveProcedure={onSaveProcedure} onDeleteProcedure={onDeleteProcedure} onSaveUser={onSaveUser} onDeleteUser={onDeleteUser} onResetPassword={onResetPassword} onToggleUserActive={onToggleUserActive} onImportStudents={onImportStudents} onSaveRolePermissions={onSaveRolePermissions} onSavePaymentInfo={onSavePaymentInfo}/>:activeView==='book'?<BookAuditView items={items}/>:activeView==='caja'?<CashReportView items={items}/>:activeView==='tracking'?<TrackingView items={items}/>:<AdminControlView items={items} offices={offices} setActiveView={setActiveView}/>
+  else content=activeView==='workflow'?<WorkflowAdminView workflows={workflows} offices={offices} procedures={procedures} onPublish={onPublishWorkflow} onSaveProcedure={onSaveProcedure} onDeleteProcedure={onDeleteProcedure}/>:activeView==='catalog'?<CatalogAdminView offices={offices} procedures={procedures} users={users} rolePermissions={rolePermissions} paymentInfo={paymentInfo} auditLog={auditLog} onSaveOffice={onSaveOffice} onDeleteOffice={onDeleteOffice} onSaveProcedure={onSaveProcedure} onDeleteProcedure={onDeleteProcedure} onSaveUser={onSaveUser} onDeleteUser={onDeleteUser} onResetPassword={onResetPassword} onToggleUserActive={onToggleUserActive} onImportStudents={onImportStudents} onSaveRolePermissions={onSaveRolePermissions} onSavePaymentInfo={onSavePaymentInfo}/>:activeView==='book'?<BookAuditView items={items}/>:activeView==='caja'?<CashReportView items={items}/>:activeView==='oficinas'?<AdminOfficeOperationsView officeId={officeId} setOfficeId={setOfficeId} items={items} offices={offices} permissions={myPermissions} onObserve={onObserve} onComplete={onComplete} onRedirect={onRedirect} onRegisterPayment={onRegisterPayment}/>:activeView==='tracking'?<TrackingView items={items}/>:<AdminControlView items={items} offices={offices} setActiveView={setActiveView}/>
 
   const login=(id)=>{setCurrentUser(null);setProfileId(id);setActiveView(id==='admin'?'control':id==='estudiante'||id==='docente'?'portal':'work');setLoggedIn(true)}
   const loginAsUser=user=>{

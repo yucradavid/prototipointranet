@@ -1,5 +1,5 @@
 import React from 'react'
-import { Building2, GraduationCap, UserRound, Inbox, ShieldCheck, Workflow, LayoutGrid, BookOpen, Search, RotateCcw, ChevronDown, Bell, Menu, X, LogOut, CheckCircle2, Wallet, KeyRound, Eye, EyeOff } from 'lucide-react'
+import { Building2, GraduationCap, UserRound, Inbox, ShieldCheck, Workflow, LayoutGrid, BookOpen, Search, RotateCcw, ChevronDown, Bell, Menu, X, LogOut, CheckCircle2, Wallet, KeyRound, Eye, EyeOff, Landmark } from 'lucide-react'
 import { PROFILES, officeName, roleLabel } from '../data/catalogs'
 import { Modal, Field } from './ui'
 
@@ -19,6 +19,7 @@ const NAV_BY_ROLE={
     ['catalog','Usuarios y catálogos',LayoutGrid],
     ['book','Libro y auditoría',BookOpen],
     ['caja','Caja y pagos',Wallet],
+    ['oficinas','Operar oficinas',Landmark],
     ['tracking','Seguimiento global',Search]
   ],
   secretaria:[

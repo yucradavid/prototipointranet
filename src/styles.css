@@ -940,6 +940,45 @@ button:disabled {
   border: 1px solid #bae6fd;
 }
 
+.office-switcher {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  background: #0f172a;
+  color: #f8fafc;
+  border: 1px solid #1e293b;
+  border-radius: var(--radius-lg);
+  padding: 12px 18px;
+  margin-bottom: 20px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.office-switcher-select {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: var(--radius-md);
+  padding: 6px 10px;
+  color: #f8fafc;
+}
+
+.office-switcher-select select {
+  background: transparent;
+  border: 0;
+  outline: 0;
+  color: #f8fafc;
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.office-switcher-select select option {
+  color: #0f172a;
+}
+
 /* -------------------------------------------------------------
    MASTER-DETAIL & LISTS
 ------------------------------------------------------------- */

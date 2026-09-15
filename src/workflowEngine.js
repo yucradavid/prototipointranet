@@ -2,39 +2,39 @@ import { officeName, procedureById } from './data/catalogs.js'
 
 const event=(actor,action,text,time)=>({time,actor,action,text})
 
-export function createVirtual(data, numero, time){
+export function createVirtual(data, numero, time, actor){
   const tracking=`ARIB-${numero}`
-  return {...data,id:`sol-${Date.now()}`,numero,tracking,canal:'Virtual',tipoDocumento:'FUT',estado:'SOLICITUD_VIRTUAL',oficinaActual:'mesa_partes',firmaSecretaria:'',vistoBuenoDireccion:'',proveido:'',routePlan:[],routeIndex:-1,routeVersion:null,respuesta:'',documentoRespuesta:'',observation:null,pago:null,pauseStartedAt:null,slaPausedMs:0,historial:[event('Solicitante','Envío virtual',`Envió FUT virtual. N.° de expediente ${numero} asignado. Pendiente de validación en Mesa de Partes.`,time)]}
+  return {...data,id:`sol-${Date.now()}`,numero,tracking,canal:'Virtual',tipoDocumento:'FUT',estado:'SOLICITUD_VIRTUAL',oficinaActual:'mesa_partes',firmaSecretaria:'',vistoBuenoDireccion:'',proveido:'',routePlan:[],routeIndex:-1,routeVersion:null,respuesta:'',documentoRespuesta:'',observation:null,pago:null,pauseStartedAt:null,slaPausedMs:0,historial:[event(actor||'Solicitante','Envío virtual',`Envió FUT virtual. N.° de expediente ${numero} asignado. Pendiente de validación en Mesa de Partes.`,time)]}
 }
 
-export function registerVirtual(exp,time){
+export function registerVirtual(exp,time,actor){
   if(exp.estado!=='SOLICITUD_VIRTUAL') throw new Error('Solo se puede registrar una solicitud virtual pendiente.')
-  return {...exp,estado:'EN_DIRECCION',oficinaActual:'direccion',firmaSecretaria:'Secretaría · recepción conforme',historial:[...exp.historial,event('Secretaría','Registro',`Validó el expediente N.° ${exp.numero}. Por regla crítica, fue remitido obligatoriamente a Dirección.`,time)]}
+  return {...exp,estado:'EN_DIRECCION',oficinaActual:'direccion',firmaSecretaria:'Secretaría · recepción conforme',historial:[...exp.historial,event(actor||'Secretaría','Registro',`Validó el expediente N.° ${exp.numero}. Por regla crítica, fue remitido obligatoriamente a Dirección.`,time)]}
 }
 
-export function createPhysical(data,numero,time){
-  return {...data,id:`exp-${numero}`,numero,tracking:`ARIB-${numero}`,canal:'Físico',tipoDocumento:'FUT',estado:'EN_DIRECCION',oficinaActual:'direccion',firmaSecretaria:'Secretaría · recepción conforme',vistoBuenoDireccion:'',proveido:'',routePlan:[],routeIndex:-1,routeVersion:null,respuesta:'',documentoRespuesta:'',observation:null,pago:null,pauseStartedAt:null,slaPausedMs:0,historial:[event('Secretaría','Registro',`Registró expediente físico N.° ${numero} y lo remitió obligatoriamente a Dirección.`,time)]}
+export function createPhysical(data,numero,time,actor){
+  return {...data,id:`exp-${numero}`,numero,tracking:`ARIB-${numero}`,canal:'Físico',tipoDocumento:'FUT',estado:'EN_DIRECCION',oficinaActual:'direccion',firmaSecretaria:'Secretaría · recepción conforme',vistoBuenoDireccion:'',proveido:'',routePlan:[],routeIndex:-1,routeVersion:null,respuesta:'',documentoRespuesta:'',observation:null,pago:null,pauseStartedAt:null,slaPausedMs:0,historial:[event(actor||'Secretaría','Registro',`Registró expediente físico N.° ${numero} y lo remitió obligatoriamente a Dirección.`,time)]}
 }
 
-export function issueProveido(exp,{proveido,routePlan,routeVersion},time){
+export function issueProveido(exp,{proveido,routePlan,routeVersion},time,actor){
   if(exp.estado!=='EN_DIRECCION') throw new Error('El expediente no está pendiente en Dirección.')
   if(!proveido?.trim()) throw new Error('El proveído es obligatorio.')
   if(!Array.isArray(routePlan)||routePlan.length===0) throw new Error('Dirección debe definir al menos una oficina de atención.')
   if(routePlan.some(x=>['mesa_partes','direccion'].includes(x))) throw new Error('La ruta posterior al proveído no debe repetir Mesa de Partes ni Dirección.')
-  return syncPause({...exp,estado:'EN_OFICINA',oficinaActual:routePlan[0],vistoBuenoDireccion:'Dirección · V°B° registrado',proveido:proveido.trim(),routePlan:[...routePlan],routeIndex:0,routeVersion:routeVersion||1,observation:null,historial:[...exp.historial,event('Dirección','Proveído',`Emitió V°B° y proveído. Ruta activada: ${routePlan.map(officeName).join(' → ')}.`,time)]})
+  return syncPause({...exp,estado:'EN_OFICINA',oficinaActual:routePlan[0],vistoBuenoDireccion:'Dirección · V°B° registrado',proveido:proveido.trim(),routePlan:[...routePlan],routeIndex:0,routeVersion:routeVersion||1,observation:null,historial:[...exp.historial,event(actor||'Dirección','Proveído',`Emitió V°B° y proveído. Ruta activada: ${routePlan.map(officeName).join(' → ')}.`,time)]})
 }
 
-export function observeAtOffice(exp,{text},time){
+export function observeAtOffice(exp,{text},time,actor){
   if(exp.estado!=='EN_OFICINA') throw new Error('Solo la oficina actual puede observar un expediente en atención.')
   if(!text?.trim()) throw new Error('Debe registrar el motivo de observación.')
   const office=exp.oficinaActual
-  return syncPause({...exp,estado:'OBSERVADO',observation:{office,text:text.trim(),createdAt:time},historial:[...exp.historial,event(officeName(office),'Observación',text.trim(),time)]})
+  return syncPause({...exp,estado:'OBSERVADO',observation:{office,text:text.trim(),createdAt:time},historial:[...exp.historial,event(actor||officeName(office),'Observación',text.trim(),time)]})
 }
 
-export function correctObservation(exp,{files=[]},time){
+export function correctObservation(exp,{files=[]},time,actor){
   if(exp.estado!=='OBSERVADO'||!exp.observation?.office) throw new Error('El expediente no tiene una observación pendiente de subsanación.')
   const office=exp.observation.office
-  return syncPause({...exp,estado:'EN_OFICINA',oficinaActual:office,adjuntos:[...(exp.adjuntos||[]),...files],observation:null,historial:[...exp.historial,event('Solicitante','Subsanación',`Subsanó la observación. El expediente regresó a ${officeName(office)}.`,time)]})
+  return syncPause({...exp,estado:'EN_OFICINA',oficinaActual:office,adjuntos:[...(exp.adjuntos||[]),...files],observation:null,historial:[...exp.historial,event(actor||'Solicitante','Subsanación',`Subsanó la observación. El expediente regresó a ${officeName(office)}.`,time)]})
 }
 
 export function requiresPayment(exp){
@@ -60,16 +60,16 @@ function syncPause(exp){
   return exp
 }
 
-export function registerPayment(exp,{monto,metodo,voucher,fecha,comprobante},time){
+export function registerPayment(exp,{monto,metodo,voucher,fecha,comprobante},time,actor){
   if(exp.estado!=='EN_OFICINA') throw new Error('El expediente no está disponible para registrar un pago.')
   if(exp.oficinaActual!=='tesoreria') throw new Error('El pago solo se registra en Tesorería.')
   if(!(Number(monto)>0)) throw new Error('Ingresa el monto pagado.')
   if(!voucher?.trim()) throw new Error('Ingresa el N.° de operación o voucher.')
-  const pago={estado:'PAGADO',monto:Number(monto),metodo:metodo||'Depósito bancario',voucher:voucher.trim(),fecha:fecha||'',comprobante:comprobante?.trim()||'',registradoAt:time}
-  return syncPause({...exp,pago,historial:[...exp.historial,event('Tesorería','Pago registrado',`Registró pago de S/ ${Number(monto).toFixed(2)} (${metodo||'Depósito bancario'}, Voucher ${voucher.trim()}).`,time)]})
+  const pago={estado:'PAGADO',monto:Number(monto),metodo:metodo||'Depósito bancario',voucher:voucher.trim(),fecha:fecha||'',comprobante:comprobante?.trim()||'',registradoAt:time,registradoPor:actor||'Tesorería'}
+  return syncPause({...exp,pago,historial:[...exp.historial,event(actor||'Tesorería','Pago registrado',`Registró pago de S/ ${Number(monto).toFixed(2)} (${metodo||'Depósito bancario'}, Voucher ${voucher.trim()}).`,time)]})
 }
 
-export function completeOfficeStep(exp,{note='',document=''},time){
+export function completeOfficeStep(exp,{note='',document=''},time,actor){
   if(exp.estado!=='EN_OFICINA') throw new Error('El expediente no está disponible para atención en oficina.')
   const current=exp.oficinaActual
   if(exp.routePlan[exp.routeIndex]!==current) throw new Error('La oficina actual no coincide con el paso configurado de la ruta.')
@@ -78,14 +78,14 @@ export function completeOfficeStep(exp,{note='',document=''},time){
   const hasNext=nextIndex<exp.routePlan.length
   if(hasNext){
     const next=exp.routePlan[nextIndex]
-    return syncPause({...exp,estado:'EN_OFICINA',oficinaActual:next,routeIndex:nextIndex,historial:[...exp.historial,event(officeName(current),'Paso completado',`${note?.trim()||'Atención conforme.'} Derivado automáticamente a ${officeName(next)}.`,time)]})
+    return syncPause({...exp,estado:'EN_OFICINA',oficinaActual:next,routeIndex:nextIndex,historial:[...exp.historial,event(actor||officeName(current),'Paso completado',`${note?.trim()||'Atención conforme.'} Derivado automáticamente a ${officeName(next)}.`,time)]})
   }
-  return syncPause({...exp,estado:'RESPUESTA_MESA',oficinaActual:'mesa_partes',routeIndex:nextIndex,respuesta:note?.trim()||'Atención culminada según proveído.',documentoRespuesta:document||`Respuesta_${exp.numero}.pdf`,historial:[...exp.historial,event(officeName(current),'Ruta completada',`${note?.trim()||'Atención conforme.'} Se devolvió el expediente a Mesa de Partes para entrega/cierre.`,time)]})
+  return syncPause({...exp,estado:'RESPUESTA_MESA',oficinaActual:'mesa_partes',routeIndex:nextIndex,respuesta:note?.trim()||'Atención culminada según proveído.',documentoRespuesta:document||`Respuesta_${exp.numero}.pdf`,historial:[...exp.historial,event(actor||officeName(current),'Ruta completada',`${note?.trim()||'Atención conforme.'} Se devolvió el expediente a Mesa de Partes para entrega/cierre.`,time)]})
 }
 
-export function finalizeCase(exp,time){
+export function finalizeCase(exp,time,actor){
   if(exp.estado!=='RESPUESTA_MESA') throw new Error('Solo se puede cerrar un expediente cuya ruta ya terminó y volvió a Mesa de Partes.')
-  return {...exp,estado:'FINALIZADO',oficinaActual:'mesa_partes',historial:[...exp.historial,event('Secretaría','Cierre','Registró la entrega/notificación de la respuesta y finalizó el expediente.',time)]}
+  return {...exp,estado:'FINALIZADO',oficinaActual:'mesa_partes',historial:[...exp.historial,event(actor||'Secretaría','Cierre','Registró la entrega/notificación de la respuesta y finalizó el expediente.',time)]}
 }
 
 export function routeProgress(exp){
@@ -163,12 +163,12 @@ export function authenticateByEmail(users,email){
   return u
 }
 
-export function redirectToOffice(exp,{officeId,note},time){
+export function redirectToOffice(exp,{officeId,note},time,actor){
   if(exp.estado!=='EN_OFICINA') throw new Error('Solo se puede redirigir un expediente en atención.')
   if(!officeId) throw new Error('Selecciona la oficina de destino.')
   const current=exp.oficinaActual
   if(officeId===current) throw new Error('Selecciona una oficina distinta a la actual.')
   const insertAt=exp.routeIndex+1
   const routePlan=[...exp.routePlan.slice(0,insertAt),officeId,...exp.routePlan.slice(insertAt)]
-  return syncPause({...exp,oficinaActual:officeId,routePlan,routeIndex:insertAt,historial:[...exp.historial,event(officeName(current),'Redirección',`${note?.trim()||'Derivación manual fuera de la ruta programada.'} Redirigido a ${officeName(officeId)}.`,time)]})
+  return syncPause({...exp,oficinaActual:officeId,routePlan,routeIndex:insertAt,historial:[...exp.historial,event(actor||officeName(current),'Redirección',`${note?.trim()||'Derivación manual fuera de la ruta programada.'} Redirigido a ${officeName(officeId)}.`,time)]})
 }

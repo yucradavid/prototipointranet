@@ -191,7 +191,7 @@ export default function LoginView({onLogin,onCredentialLogin,onGoogleLogin,offic
             </div>
             <div className="office-tabs">
               {routableOffices.map(o=>(
-                <button key={o.id} type="button" className="office-tab" onClick={()=>tryOfficeLogin(o)} title={`Entrar como Encargado de ${o.name}`}>
+                <button key={o.id} type="button" className="office-tab" onClick={()=>tryOfficeLogin(o)} title={`Entrar como ${o.roleTitle||'Encargado'} de ${o.name}`}>
                   <Building2 size={16} color="#0284c7" style={{flex:'none'}}/>
                   <span>{o.name}</span>
                 </button>

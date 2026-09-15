@@ -128,6 +128,21 @@ test('Tesorería no puede completar un trámite pagado sin registrar el pago',()
  assert.equal(done.oficinaActual,'jefatura_academica')
 })
 
+test('el historial registra quién realmente hizo la acción, no solo el nombre genérico de la oficina',()=>{
+ const paidBase={...base,procedureId:'cert_modular'}
+ const r=registerVirtual(createVirtual(paidBase,6001,'08:00'),'08:05')
+ const p=issueProveido(r,{proveido:'PASE',routePlan:['tesoreria'],routeVersion:1},'08:10','Dirección ARIB (Dirección)')
+ assert.equal(p.historial.at(-1).actor,'Dirección ARIB (Dirección)')
+ // Si el propio Administrador opera Tesorería como superusuario, el historial debe decir
+ // que fue el Administrador, no el genérico "Tesorería".
+ const paid=registerPayment(p,{monto:25,voucher:'OP-777'},'08:15','Administrador ARIB (Administrador)')
+ assert.equal(paid.historial.at(-1).actor,'Administrador ARIB (Administrador)')
+ assert.equal(paid.pago.registradoPor,'Administrador ARIB (Administrador)')
+ // Sin actor explícito, se mantiene el comportamiento genérico de siempre (compatibilidad).
+ const p2=issueProveido(registerVirtual(createVirtual(base,6002,'08:00'),'08:05'),{proveido:'PASE',routePlan:['biblioteca'],routeVersion:1},'08:10')
+ assert.equal(p2.historial.at(-1).actor,'Dirección')
+})
+
 test('registerPayment solo se registra en Tesorería y con el expediente en atención',()=>{
  const paidBase={...base,procedureId:'cert_modular'}
  const r=registerVirtual(createVirtual(paidBase,6001,'08:00'),'08:05')

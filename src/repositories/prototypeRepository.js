@@ -15,11 +15,36 @@ export function loadExpedientes(){try{return JSON.parse(localStorage.getItem(K_E
 export function saveExpedientes(v){try{localStorage.setItem(K_EXP,JSON.stringify(v))}catch{}}
 export function loadWorkflows(){try{return JSON.parse(localStorage.getItem(K_WF))||clone(seedWorkflowConfigs)}catch{return clone(seedWorkflowConfigs)}}
 export function saveWorkflows(v){try{localStorage.setItem(K_WF,JSON.stringify(v))}catch{}}
-export function loadOffices(){try{return JSON.parse(localStorage.getItem(K_OFFICES))||clone(DEFAULT_OFFICES)}catch{return clone(DEFAULT_OFFICES)}}
+export function loadOffices(){
+  try{
+    const stored=JSON.parse(localStorage.getItem(K_OFFICES))
+    if(!stored)return clone(DEFAULT_OFFICES)
+    // Migración: navegadores con oficinas guardadas antes de agregar "roleTitle" (cargo
+    // jerárquico real, ej. "Jefe de Unidad Administrativa" para Tesorería) no lo tendrían
+    // todavía. También corrige la etiqueta intermedia "Administrador" que tuvo Tesorería
+    // brevemente, para no dejarla a medio migrar en un navegador que ya la haya guardado.
+    return stored.map(o=>{
+      const withDefault={roleTitle:DEFAULT_OFFICES.find(d=>d.id===o.id)?.roleTitle||'Encargado',...o}
+      if(withDefault.id==='tesoreria'&&withDefault.roleTitle==='Administrador')withDefault.roleTitle='Jefe de Unidad Administrativa'
+      return withDefault
+    })
+  }catch{return clone(DEFAULT_OFFICES)}
+}
 export function saveOffices(v){try{localStorage.setItem(K_OFFICES,JSON.stringify(v))}catch{}}
 export function loadProcedures(){try{return JSON.parse(localStorage.getItem(K_PROCEDURES))||clone(DEFAULT_PROCEDURES)}catch{return clone(DEFAULT_PROCEDURES)}}
 export function saveProcedures(v){try{localStorage.setItem(K_PROCEDURES,JSON.stringify(v))}catch{}}
-export function loadUsers(){try{return JSON.parse(localStorage.getItem(K_USERS))||clone(seedUsers)}catch{return clone(seedUsers)}}
+export function loadUsers(){
+  try{
+    const stored=JSON.parse(localStorage.getItem(K_USERS))
+    if(!stored)return clone(seedUsers)
+    // Migración: navegadores con el usuario demo de Tesorería guardado antes de fijar su
+    // cargo real ("Jefe de Unidad Administrativa") seguirían mostrando un nombre viejo
+    // ("Encargado de Tesorería" o el intermedio "Administrador de Tesorería"). Solo se
+    // corrige si nadie le puso ya un nombre real a esa cuenta.
+    const OLD_TESORERIA_NAMES=['Encargado de Tesorería','Administrador de Tesorería']
+    return stored.map(u=>u.id==='u-tes1'&&OLD_TESORERIA_NAMES.includes(u.fullName)?{...u,fullName:'Jefe de Unidad Administrativa de Tesorería'}:u)
+  }catch{return clone(seedUsers)}
+}
 export function saveUsers(v){try{localStorage.setItem(K_USERS,JSON.stringify(v))}catch{}}
 export function loadRolePermissions(){
   try{
@@ -32,6 +57,17 @@ export function loadRolePermissions(){
     // permiso propio no lo tendrían en el rol de oficina; sin esto, Tesorería perdería
     // de golpe la capacidad de registrar pagos que ya tenía.
     if(stored.oficina&&!stored.oficina.permissions.includes('case.pay'))stored.oficina.permissions=[...stored.oficina.permissions,'case.pay']
+    // Migración: navegadores con datos guardados antes de que Administrador pudiera operar
+    // oficinas como superusuario desde su propio panel no tendrían ni la vista ni los
+    // permisos de oficina. También limpia "tesoreria", el id de vista intermedio que tuvo
+    // esta capacidad brevemente cuando solo alcanzaba a esa oficina.
+    if(stored.admin){
+      stored.admin.views=stored.admin.views.filter(v=>v!=='tesoreria')
+      if(!stored.admin.views.includes('oficinas'))stored.admin.views=[...stored.admin.views,'oficinas']
+      const officePerms=['case.attend','case.observe','case.forward','case.pay']
+      const missing=officePerms.filter(p=>!stored.admin.permissions.includes(p))
+      if(missing.length)stored.admin.permissions=[...stored.admin.permissions,...missing]
+    }
     return stored
   }catch{return clone(DEFAULT_ROLE_PERMISSIONS)}
 }

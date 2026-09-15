@@ -1,12 +1,18 @@
+// `roleTitle`: cargo jerárquico real de quien atiende esa oficina, tal como se le llama en la
+// institución (ej. Tesorería la maneja alguien con cargo de "Jefe de Unidad Administrativa" —
+// un cargo distinto del rol "Administrador" del sistema, aunque compartan la palabra). Se usa
+// para mostrar "Jefe de Unidad Administrativa de Tesorería" en vez de un genérico "Encargado
+// de Tesorería" — el Administrador del sistema puede ajustarlo por oficina en
+// "Usuarios y catálogos → Oficinas".
 export const DEFAULT_OFFICES = [
-  {id:'mesa_partes', name:'Mesa de Partes / Secretaría', short:'MP', color:'#0788d1'},
-  {id:'direccion', name:'Dirección', short:'DIR', color:'#111827'},
-  {id:'jefatura_academica', name:'Jefatura Académica', short:'JA', color:'#f59e0b'},
-  {id:'tesoreria', name:'Tesorería', short:'TES', color:'#22c55e'},
-  {id:'biblioteca', name:'Biblioteca', short:'BIB', color:'#d946ef'},
-  {id:'efsrt', name:'EFSRT', short:'EFSRT', color:'#fb7185'},
-  {id:'unidad_academica', name:'Unidad Académica', short:'UA', color:'#8b5cf6'},
-  {id:'secretaria_academica', name:'Secretaría Académica', short:'SA', color:'#06b6d4'},
+  {id:'mesa_partes', name:'Mesa de Partes / Secretaría', short:'MP', color:'#0788d1', roleTitle:'Encargado'},
+  {id:'direccion', name:'Dirección', short:'DIR', color:'#111827', roleTitle:'Encargado'},
+  {id:'jefatura_academica', name:'Jefatura Académica', short:'JA', color:'#f59e0b', roleTitle:'Encargado'},
+  {id:'tesoreria', name:'Tesorería', short:'TES', color:'#22c55e', roleTitle:'Jefe de Unidad Administrativa'},
+  {id:'biblioteca', name:'Biblioteca', short:'BIB', color:'#d946ef', roleTitle:'Encargado'},
+  {id:'efsrt', name:'EFSRT', short:'EFSRT', color:'#fb7185', roleTitle:'Encargado'},
+  {id:'unidad_academica', name:'Unidad Académica', short:'UA', color:'#8b5cf6', roleTitle:'Encargado'},
+  {id:'secretaria_academica', name:'Secretaría Académica', short:'SA', color:'#06b6d4', roleTitle:'Encargado'},
 ]
 
 export const DEFAULT_PROCEDURES = [
@@ -63,6 +69,7 @@ export const VIEW_CATALOG = [
   {id:'work', label:'Mesa de trabajo (bandeja del rol)'},
   {id:'book', label:'Libro y auditoría'},
   {id:'caja', label:'Caja y pagos'},
+  {id:'oficinas', label:'Operar oficinas (superusuario)'},
   {id:'portal', label:'Mi Mesa de Partes'},
   {id:'tracking', label:'Seguimiento'},
 ]
@@ -72,7 +79,7 @@ export const POSSIBLE_VIEWS_BY_ROLE = {
   secretaria:['work','book','tracking'],
   direccion:['work','book','tracking'],
   oficina:['work','book','tracking'],
-  admin:['control','workflow','catalog','book','caja','tracking'],
+  admin:['control','workflow','catalog','book','caja','oficinas','tracking'],
 }
 
 // Catálogo de permisos granulares (acciones concretas) que puede tener un rol.
@@ -104,7 +111,7 @@ export const DEFAULT_ROLE_PERMISSIONS = {
   secretaria:{views:['work','book','tracking'], permissions:['case.register','case.receive','case.close','book.view']},
   direccion:{views:['work','tracking'], permissions:['case.proveido','route.choose','case.view']},
   oficina:{views:['work','tracking'], permissions:['case.attend','case.observe','case.forward','case.pay']},
-  admin:{views:['control','workflow','catalog','book','caja','tracking'], permissions:['system.manage','workflow.manage','users.manage','audit.view','reports.view']},
+  admin:{views:['control','workflow','catalog','book','caja','oficinas','tracking'], permissions:['system.manage','workflow.manage','users.manage','audit.view','reports.view','case.attend','case.observe','case.forward','case.pay']},
 }
 
 // Igual que OFFICES/PROCEDURES: el prototipo permite a Administrador reconfigurar
@@ -119,8 +126,9 @@ export const hasPermission = (role,perm) => rolePerms(role).includes(perm)
 export const officeById = id => OFFICES.find(x=>x.id===id)
 export const procedureById = id => PROCEDURES.find(x=>x.id===id)
 export const officeName = id => officeById(id)?.name || id || '—'
-// Rol legible para mostrar en UI: para 'oficina' usa la oficina asignada
-// (ej. "Encargado de Tesorería") en vez del genérico "Oficina destino",
-// para que cada oficina se sienta como un rol propio sin crear un PROFILES nuevo por oficina.
-export const roleLabel = user => user?.role==='oficina'&&user?.office ? `Encargado de ${officeName(user.office)}` : (PROFILES.find(p=>p.id===user?.role)?.label || user?.role || '—')
+// Rol legible para mostrar en UI: para 'oficina' usa la oficina asignada y su cargo real
+// (ej. "Jefe de Unidad Administrativa de Tesorería", "Encargado de Biblioteca") en vez del
+// genérico "Oficina destino", para que cada oficina se sienta como un rol propio sin crear
+// un PROFILES nuevo por oficina.
+export const roleLabel = user => user?.role==='oficina'&&user?.office ? `${officeById(user.office)?.roleTitle || 'Encargado'} de ${officeName(user.office)}` : (PROFILES.find(p=>p.id===user?.role)?.label || user?.role || '—')
 export const slugify = s => String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'') || `item_${Date.now()}`
