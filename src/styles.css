@@ -817,6 +817,10 @@ button:disabled {
   grid-template-columns: repeat(5, 1fr);
 }
 
+.kpi-grid.six {
+  grid-template-columns: repeat(6, 1fr);
+}
+
 .kpi {
   border: 1px solid var(--line);
   background: white;
@@ -1894,6 +1898,26 @@ button:disabled {
   color: var(--text);
 }
 
+.route-edit-card button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.route-edit-step {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #0284c7;
+  color: white;
+  font-size: 11px;
+  font-weight: 800;
+  display: grid;
+  place-items: center;
+  flex: none;
+}
+
 .add-office-row {
   display: flex;
   align-items: center;
@@ -2265,6 +2289,23 @@ button:disabled {
 .palette-office b {
   font-size: 11px;
   color: var(--text);
+}
+
+.palette-office-add {
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: #e0f2fe;
+  color: #0284c7;
+  display: grid;
+  place-items: center;
+  flex: none;
+  cursor: pointer;
+}
+
+.palette-office-add:hover {
+  background: #bae6fd;
 }
 
 .version-card {
@@ -2941,6 +2982,29 @@ button:disabled {
   letter-spacing: 0.06em;
 }
 
+.demo-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 22px;
+  padding: 9px 12px;
+  background: #f8fafc;
+  border: 1px dashed #cbd5e1;
+  border-radius: var(--radius-md);
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+}
+
+.demo-toggle:hover {
+  background: #f1f5f9;
+  color: #475569;
+}
+
 .demo-profiles {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
@@ -3048,7 +3112,8 @@ button:disabled {
     grid-template-columns: 1fr;
   }
   .kpi-grid,
-  .kpi-grid.five {
+  .kpi-grid.five,
+  .kpi-grid.six {
     grid-template-columns: repeat(2, 1fr);
   }
   .admin-three {
@@ -3100,6 +3165,7 @@ button:disabled {
   }
   .kpi-grid,
   .kpi-grid.five,
+  .kpi-grid.six,
   .form-grid.two,
   .detail-cols,
   .mini-stats {
@@ -3112,8 +3178,32 @@ button:disabled {
     grid-template-columns: 1fr;
     height: auto;
   }
+  /* En vez de ocultar la paleta (el lienzo quedaba inutilizable: no había otra forma de
+     agregar una oficina), se convierte en una tira horizontal desplazable arriba del
+     lienzo, con el botón "+" de cada oficina como alternativa al arrastre táctil. */
   .designer-palette {
+    border-right: none;
+    border-bottom: 1px solid var(--line);
+    max-height: none;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .designer-palette .locked-note,
+  .designer-palette .version-card {
     display: none;
+  }
+  .palette-office-list {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    gap: 8px;
+    padding-bottom: 4px;
+  }
+  .palette-office {
+    flex: none;
+    min-width: 170px;
   }
   .designer-canvas {
     height: 600px;

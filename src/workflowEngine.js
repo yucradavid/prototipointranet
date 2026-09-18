@@ -69,6 +69,19 @@ export function registerPayment(exp,{monto,metodo,voucher,fecha,comprobante},tim
   return syncPause({...exp,pago,historial:[...exp.historial,event(actor||'Tesorería','Pago registrado',`Registró pago de S/ ${Number(monto).toFixed(2)} (${metodo||'Depósito bancario'}, Voucher ${voucher.trim()}).`,time)]})
 }
 
+// Como control adicional, la corrección de un pago ya registrado (p.ej. un monto mal
+// digitado por Tesorería) queda reservada exclusivamente al Administrador — ver el
+// permiso dedicado 'case.pay_edit', que por defecto no se otorga al rol 'oficina'.
+export function editPayment(exp,{monto},time,actor){
+  if(exp.pago?.estado!=='PAGADO') throw new Error('El expediente no tiene un pago registrado para corregir.')
+  if(!(Number(monto)>0)) throw new Error('Ingresa el monto corregido.')
+  const montoAnterior=Number(exp.pago.monto)
+  const montoNuevo=Number(monto)
+  if(montoNuevo===montoAnterior) throw new Error('El monto corregido debe ser distinto al monto registrado.')
+  const pago={...exp.pago,monto:montoNuevo,editadoAt:time,editadoPor:actor||'Administrador'}
+  return {...exp,pago,historial:[...exp.historial,event(actor||'Administrador','Pago corregido',`Corrigió el monto del pago de S/ ${montoAnterior.toFixed(2)} a S/ ${montoNuevo.toFixed(2)}.`,time)]}
+}
+
 export function completeOfficeStep(exp,{note='',document=''},time,actor){
   if(exp.estado!=='EN_OFICINA') throw new Error('El expediente no está disponible para atención en oficina.')
   const current=exp.oficinaActual

@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react'
-import { Plus, Pencil, Trash2, LockKeyhole, Building2, BookOpen, Users, Palette, CheckCircle2, ShieldCheck, Wallet, History } from 'lucide-react'
+import React, { useEffect, useMemo, useState } from 'react'
+import { Plus, Pencil, Trash2, LockKeyhole, Building2, BookOpen, Users, Palette, CheckCircle2, ShieldCheck, Wallet, History, Search } from 'lucide-react'
 import { Panel, Badge, Modal, Field } from '../components/ui'
 import ProcedureFormModal from '../components/ProcedureFormModal'
 import UserAdminView from './UserAdminView'
@@ -24,6 +24,7 @@ export default function CatalogAdminView({
   onDeleteUser,
   onResetPassword,
   onToggleUserActive,
+  onBulkSetActive,
   onImportStudents,
   onSaveRolePermissions,
   onSavePaymentInfo
@@ -32,8 +33,19 @@ export default function CatalogAdminView({
   const [officeModal, setOfficeModal] = useState(null)
   const [procModal, setProcModal] = useState(null)
   const [paymentForm, setPaymentForm] = useState(paymentInfo)
+  const [officeQuery, setOfficeQuery] = useState('')
+  const [procQuery, setProcQuery] = useState('')
 
   useEffect(() => { setPaymentForm(paymentInfo) }, [paymentInfo])
+
+  const filteredOffices = useMemo(() =>
+    offices.filter(o => `${o.name} ${o.short} ${o.roleTitle || ''}`.toLowerCase().includes(officeQuery.toLowerCase())),
+    [offices, officeQuery]
+  )
+  const filteredProcedures = useMemo(() =>
+    procedures.filter(p => `${p.name} ${p.category}`.toLowerCase().includes(procQuery.toLowerCase())),
+    [procedures, procQuery]
+  )
 
   const saveOffice = () => {
     if (!officeModal?.name?.trim()) return
@@ -116,6 +128,7 @@ export default function CatalogAdminView({
           onDeleteUser={onDeleteUser}
           onResetPassword={onResetPassword}
           onToggleActive={onToggleUserActive}
+          onBulkSetActive={onBulkSetActive}
           onImportStudents={onImportStudents}
         />
       )}
@@ -134,9 +147,15 @@ export default function CatalogAdminView({
           title="Oficinas y Dependencias Institucionales"
           subtitle="Mesa de Partes y Dirección General son dependencias fijas por regla del sistema; las demás oficinas pueden administrarse libremente."
           actions={
-            <button className="btn primary" onClick={() => setOfficeModal({ ...emptyOffice })}>
-              <Plus size={16} /> Nueva oficina
-            </button>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <div className="search-mini">
+                <Search size={15} />
+                <input value={officeQuery} onChange={e => setOfficeQuery(e.target.value)} placeholder="Buscar oficina…" />
+              </div>
+              <button className="btn primary" onClick={() => setOfficeModal({ ...emptyOffice })}>
+                <Plus size={16} /> Nueva oficina
+              </button>
+            </div>
           }
         >
           <div className="table-wrap">
@@ -151,7 +170,10 @@ export default function CatalogAdminView({
                 </tr>
               </thead>
               <tbody>
-                {offices.map(o => {
+                {filteredOffices.length === 0 && (
+                  <tr><td colSpan={5} style={{ textAlign: 'center', padding: 24, color: 'var(--arib-navy-light)', fontSize: 13 }}>Sin oficinas que coincidan con la búsqueda.</td></tr>
+                )}
+                {filteredOffices.map(o => {
                   const locked = ['mesa_partes', 'direccion'].includes(o.id)
                   return (
                     <tr key={o.id}>
@@ -279,9 +301,15 @@ export default function CatalogAdminView({
           title="Catálogo General de Trámites"
           subtitle="Cada trámite define sus requisitos y su ruta inicial de derivación; Dirección General y el Administrador de Flujos pueden versionarla dinámicamente."
           actions={
-            <button className="btn primary" onClick={() => setProcModal({})}>
-              <Plus size={16} /> Nuevo trámite
-            </button>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <div className="search-mini">
+                <Search size={15} />
+                <input value={procQuery} onChange={e => setProcQuery(e.target.value)} placeholder="Buscar trámite o categoría…" />
+              </div>
+              <button className="btn primary" onClick={() => setProcModal({})}>
+                <Plus size={16} /> Nuevo trámite
+              </button>
+            </div>
           }
         >
           <div className="table-wrap">
@@ -298,7 +326,10 @@ export default function CatalogAdminView({
                 </tr>
               </thead>
               <tbody>
-                {procedures.map(p => (
+                {filteredProcedures.length === 0 && (
+                  <tr><td colSpan={7} style={{ textAlign: 'center', padding: 24, color: 'var(--arib-navy-light)', fontSize: 13 }}>Sin trámites que coincidan con la búsqueda.</td></tr>
+                )}
+                {filteredProcedures.map(p => (
                   <tr key={p.id}>
                     <td>
                       <b style={{ color: 'var(--arib-navy)' }}>{p.name}</b>

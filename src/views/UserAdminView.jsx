@@ -2,9 +2,9 @@ import React, { useState } from 'react'
 import {
   Plus, Pencil, Trash2, KeyRound, Power, Download, UploadCloud,
   Search, UserRound, ShieldCheck, Building2, CheckCircle2, AlertTriangle,
-  FileSpreadsheet, Sparkles, Eye, EyeOff
+  FileSpreadsheet, Sparkles, Eye, EyeOff, PowerOff
 } from 'lucide-react'
-import { Panel, Badge, Modal, Field } from '../components/ui'
+import { Panel, Badge, Modal, Field, Empty } from '../components/ui'
 import UserFormModal from '../components/UserFormModal'
 import { officeName, roleLabel } from '../data/catalogs'
 import { parseStudentsCsv, buildStudentsTemplateCsv, buildCredentialsCsv } from '../data/userImport'
@@ -23,6 +23,7 @@ export default function UserAdminView({
   onDeleteUser,
   onResetPassword,
   onToggleActive,
+  onBulkSetActive,
   onImportStudents
 }) {
   const [search, setSearch] = useState('')
@@ -34,6 +35,7 @@ export default function UserAdminView({
   const [resetTarget, setResetTarget] = useState(null)
   const [newPassword, setNewPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
+  const [selected, setSelected] = useState(() => new Set())
 
   const rows = users
     .filter(u => {
@@ -47,6 +49,25 @@ export default function UserAdminView({
         .toLowerCase()
         .includes(search.toLowerCase())
     )
+
+  const allVisibleSelected = rows.length > 0 && rows.every(u => selected.has(u.id))
+  const toggleSelectAll = () => {
+    setSelected(curr => {
+      if (allVisibleSelected) return new Set([...curr].filter(id => !rows.some(u => u.id === id)))
+      return new Set([...curr, ...rows.map(u => u.id)])
+    })
+  }
+  const toggleSelectOne = id => {
+    setSelected(curr => {
+      const next = new Set(curr)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+  }
+  const bulkSetActive = active => {
+    onBulkSetActive([...selected], active)
+    setSelected(new Set())
+  }
 
   const openReset = u => {
     setResetTarget(u)
@@ -129,11 +150,35 @@ export default function UserAdminView({
           </button>
         </div>
 
+        {/* Bulk action bar, visible only with an active selection */}
+        {selected.size > 0 && (
+          <div className="rule-banner" style={{ marginBottom: 14, background: 'var(--arib-info-subtle)', borderColor: 'var(--arib-info)' }}>
+            <CheckCircle2 size={20} style={{ color: 'var(--arib-info)', flexShrink: 0 }} />
+            <div style={{ flex: 1 }}>
+              <b style={{ fontSize: 13, color: 'var(--arib-navy)' }}>{selected.size} usuario(s) seleccionado(s)</b>
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button className="btn soft" onClick={() => bulkSetActive(true)}>
+                <Power size={14} /> Activar
+              </button>
+              <button className="btn soft" onClick={() => bulkSetActive(false)}>
+                <PowerOff size={14} /> Desactivar
+              </button>
+              <button className="btn ghost" onClick={() => setSelected(new Set())}>
+                Cancelar
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* User Table */}
         <div className="table-wrap">
           <table>
             <thead>
               <tr>
+                <th style={{ width: 32 }}>
+                  <input type="checkbox" checked={allVisibleSelected} onChange={toggleSelectAll} title="Seleccionar todos los visibles" />
+                </th>
                 <th>Usuario / Nombres</th>
                 <th>Login / Identificador</th>
                 <th>Correo Institucional</th>
@@ -146,6 +191,9 @@ export default function UserAdminView({
             <tbody>
               {rows.map(u => (
                 <tr key={u.id}>
+                  <td>
+                    <input type="checkbox" checked={selected.has(u.id)} onChange={() => toggleSelectOne(u.id)} />
+                  </td>
                   <td>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                       <div
@@ -251,6 +299,9 @@ export default function UserAdminView({
                   </td>
                 </tr>
               ))}
+              {rows.length === 0 && (
+                <tr><td colSpan={8}><Empty title="Sin usuarios" text="Ningún usuario coincide con la búsqueda o filtro seleccionado." /></td></tr>
+              )}
             </tbody>
           </table>
         </div>

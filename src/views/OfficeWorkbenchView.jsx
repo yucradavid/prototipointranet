@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react'
 import {
   Building2, Search, CheckCircle2, AlertTriangle, ArrowRight, UploadCloud,
   Clock3, Shuffle, FileText, UserRound, ArrowLeftRight, Check, CornerDownRight,
-  ShieldAlert, Sparkles, MessageSquare, ExternalLink, Wallet, Receipt
+  ShieldAlert, Sparkles, MessageSquare, ExternalLink, Wallet, Receipt, History
 } from 'lucide-react'
 import { Panel, StatusBadge, SlaBadge, Badge, Empty, RouteStrip, Timeline, FileList, Modal, Field } from '../components/ui'
 import { officeName, procedureById } from '../data/catalogs'
@@ -71,11 +71,25 @@ export default function OfficeWorkbenchView({ officeId, items, offices, permissi
       .filter(x => `${x.numero || ''} ${x.solicitante} ${x.asunto}`.toLowerCase().includes(search.toLowerCase()))
   }, [items, officeId, search])
 
+  // Una vez que esta oficina completa su paso, el expediente avanza y desaparece de
+  // baseQueue — sin esto la oficina no tenía ninguna memoria de lo que ya atendió.
+  // "Resuelto por nosotros" = esta oficina aparece en la ruta y el expediente ya avanzó
+  // más allá de su posición en ella (o la ruta ya terminó).
+  const resolvedByOffice = useMemo(() => {
+    return items
+      .filter(x => {
+        const idx = (x.routePlan || []).indexOf(officeId)
+        return idx !== -1 && x.routeIndex > idx
+      })
+      .filter(x => `${x.numero || ''} ${x.solicitante} ${x.asunto}`.toLowerCase().includes(search.toLowerCase()))
+  }, [items, officeId, search])
+
   const queue = useMemo(() => {
     if (filter === 'EN_OFICINA') return baseQueue.filter(x => x.estado === 'EN_OFICINA')
     if (filter === 'OBSERVADO') return baseQueue.filter(x => x.estado === 'OBSERVADO')
+    if (filter === 'RESUELTOS') return resolvedByOffice
     return baseQueue
-  }, [baseQueue, filter])
+  }, [baseQueue, resolvedByOffice, filter])
 
   const selected = items.find(x => x.id === selectedId) || queue[0]
   const procedure = procedureById(selected?.procedureId)
@@ -199,6 +213,13 @@ export default function OfficeWorkbenchView({ officeId, items, offices, permissi
               onClick={() => setFilter('OBSERVADO')}
             >
               Observados ({baseQueue.filter(x => x.estado === 'OBSERVADO').length})
+            </button>
+            <button
+              className={`filter-pill ${filter === 'RESUELTOS' ? 'active' : ''}`}
+              onClick={() => setFilter('RESUELTOS')}
+              title="Expedientes que esta oficina ya atendió y derivó"
+            >
+              <History size={12} style={{ marginRight: 4 }} /> Resueltos por nosotros ({resolvedByOffice.length})
             </button>
           </div>
 
@@ -388,6 +409,21 @@ export default function OfficeWorkbenchView({ officeId, items, offices, permissi
                     </div>
                   )}
 
+                  {/* Case already moved past this office (viewed from the "Resueltos" tab): read-only, no action box */}
+                  {selected.oficinaActual !== officeId ? (
+                    <div className="soft-box" style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+                      <CheckCircle2 size={22} style={{ color: '#16a34a', flexShrink: 0 }} />
+                      <div>
+                        <b style={{ color: 'var(--arib-navy)', fontSize: 13 }}>Ya resuelto por {officeName(officeId)}</b>
+                        <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--arib-slate)' }}>
+                          {selected.estado === 'FINALIZADO'
+                            ? 'El expediente completó toda su ruta y fue cerrado por Mesa de Partes.'
+                            : `El expediente avanzó a ${officeName(selected.oficinaActual)}. Solo se muestra en consulta; ya no se puede modificar desde esta bandeja.`}
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                  <>
                   {/* Primary Operational Action Box */}
                   <div className="office-action-card" style={{ borderLeft: `4px solid ${officeColor}`, background: 'var(--arib-surface-card)' }}>
                     <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 14 }}>
@@ -494,6 +530,8 @@ export default function OfficeWorkbenchView({ officeId, items, offices, permissi
                       )}
                     </div>
                   </div>
+                  </>
+                  )}
                 </>
               )}
 

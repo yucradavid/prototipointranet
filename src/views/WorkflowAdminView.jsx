@@ -1,12 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import '@xyflow/react/dist/style.css'
 import {
   ReactFlow, ReactFlowProvider, Background, Controls, MiniMap,
   useNodesState, useEdgesState, addEdge, MarkerType, useReactFlow
 } from '@xyflow/react'
 import {
-  Workflow, Search, GripVertical, Building2, Rocket, Play,
+  Workflow, Search, Building2, Rocket, Play,
   AlertTriangle, CheckCircle2, LockKeyhole, WandSparkles, Plus,
-  Pencil, Trash2, Info, ArrowRight, Layers, Sparkles
+  Pencil, Trash2
 } from 'lucide-react'
 import RouteNode from '../components/RouteNode'
 import { Panel, Badge } from '../components/ui'
@@ -92,7 +93,7 @@ function extractRoute(nodes, edges) {
   throw new Error('No se encontró el nodo final de cierre de ruta.')
 }
 
-function Designer({ procedureId, config, offices, monto, onPublish }) {
+function Designer({ procedureId, config, offices, monto, onPublish, onDirtyChange }) {
   // Referencia estable: los nodos se construyen en varios momentos (carga inicial,
   // cambio de trámite, soltar una oficina nueva) y todos deben recibir la MISMA
   // función de borrado, así que se define antes y se pasa explícitamente.
@@ -116,15 +117,16 @@ function Designer({ procedureId, config, offices, monto, onPublish }) {
       }
       return remaining
     })
-    setMessage('Oficina quitada del lienzo. El recorrido se reconectó automáticamente; recuerda "Publicar nueva versión" para guardar el cambio.')
+    setMessage({ text: 'Oficina quitada del lienzo. El recorrido se reconectó automáticamente; recuerda "Publicar nueva versión" para guardar el cambio.', tone: 'warn' })
   }, [])
 
   const initial = useMemo(() => layoutForRoute(config.route, offices, removeNode), [procedureId])
   const [nodes, setNodes, onNodesChange] = useNodesState(initial.nodes)
   const [edges, setEdges, onEdgesChange] = useEdgesState(initial.edges)
   const { screenToFlowPosition } = useReactFlow()
-  const [message, setMessage] = useState('')
+  const [message, setMessage] = useState(null)
   const [simulation, setSimulation] = useState({ path: [], index: -1 })
+  const [dirty, setDirty] = useState(false)
 
   useEffect(() => {
     // Solo reconstruir el lienzo al cambiar de TRÁMITE. No incluir config.version aquí:
@@ -134,10 +136,27 @@ function Designer({ procedureId, config, offices, monto, onPublish }) {
     const x = layoutForRoute(config.route, offices, removeNode)
     setNodes(x.nodes)
     setEdges(x.edges)
-    setMessage('')
+    setMessage(null)
     setSimulation({ path: [], index: -1 })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [procedureId])
+
+  // Compara la ruta que se podría extraer del lienzo actual contra la última versión
+  // publicada, para poder avisar si el admin intenta cambiar de trámite (o navegar a
+  // otra pantalla) dejando cambios sin publicar. Un lienzo en un estado intermedio no
+  // extraíble (oficina recién soltada, sin conectar) también cuenta como "sin guardar".
+  useEffect(() => {
+    let isDirty
+    try {
+      const route = extractRoute(nodes, edges)
+      isDirty = JSON.stringify(route) !== JSON.stringify(config.route)
+    } catch {
+      isDirty = true
+    }
+    setDirty(isDirty)
+    onDirtyChange?.(isDirty)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nodes, edges, config.route])
 
   const onConnect = useCallback(
     params => setEdges(es => addEdge({ ...params, ...edgeStyle, id: `e-${Date.now()}` }, es)),
@@ -152,9 +171,25 @@ function Designer({ procedureId, config, offices, monto, onPublish }) {
       const id = `office-${officeId}-${Date.now()}`
       const position = screenToFlowPosition({ x: e.clientX, y: e.clientY })
       setNodes(ns => [...ns, { id, type: 'route', position, data: officeData(officeId, offices, removeNode), deletable: true }])
-      setMessage(`${officeName(officeId)} agregado al lienzo. Conéctalo arrastrando desde el conector derecho de la oficina previa.`)
+      setMessage({ text: `${officeName(officeId)} agregado al lienzo. Conéctalo arrastrando desde el conector derecho de la oficina previa.`, tone: 'warn' })
     },
     [setNodes, screenToFlowPosition, offices]
+  )
+
+  // Alternativa al arrastre para pantallas táctiles/angostas (tablet, celular), donde
+  // arrastrar-y-soltar del navegador no es confiable: un toque agrega la oficina al
+  // lienzo en una posición libre, igual que soltarla desde el mouse.
+  const addOfficeByClick = useCallback(
+    officeId => {
+      const id = `office-${officeId}-${Date.now()}`
+      setNodes(ns => {
+        const count = ns.filter(n => n.data.kind === 'office').length
+        const position = { x: 50 + (count + 2) * 240, y: count % 2 ? 190 : 100 }
+        return [...ns, { id, type: 'route', position, data: officeData(officeId, offices, removeNode), deletable: true }]
+      })
+      setMessage({ text: `${officeName(officeId)} agregado al lienzo. Conéctalo arrastrando desde el conector derecho de la oficina previa.`, tone: 'warn' })
+    },
+    [setNodes, offices]
   )
 
   const autoArrange = () => {
@@ -163,9 +198,9 @@ function Designer({ procedureId, config, offices, monto, onPublish }) {
       const x = layoutForRoute(route, offices)
       setNodes(x.nodes)
       setEdges(x.edges)
-      setMessage('Ruta auto-alineada correctamente.')
+      setMessage({ text: 'Ruta auto-alineada correctamente.', tone: 'ok' })
     } catch (err) {
-      setMessage(err.message)
+      setMessage({ text: err.message, tone: 'warn' })
     }
   }
 
@@ -178,9 +213,12 @@ function Designer({ procedureId, config, offices, monto, onPublish }) {
       const paymentWarning = monto > 0 && !route.includes('tesoreria')
         ? ' ⚠ Este trámite tiene costo y esta ruta no incluye Tesorería: nadie validará el pago.'
         : ''
-      setMessage(`Publicada exitosamente nueva versión (v${(config.version || 1) + 1}) con ruta: ${route.map(officeName).join(' → ')}${paymentWarning}`)
+      setMessage({
+        text: `Publicada exitosamente nueva versión (v${(config.version || 1) + 1}) con ruta: ${route.map(officeName).join(' → ')}${paymentWarning}`,
+        tone: paymentWarning ? 'warn' : 'ok'
+      })
     } catch (err) {
-      setMessage(err.message)
+      setMessage({ text: err.message, tone: 'warn' })
     }
   }
 
@@ -195,7 +233,7 @@ function Designer({ procedureId, config, offices, monto, onPublish }) {
       ]
       setSimulation({ path, index: 0 })
     } catch (err) {
-      setMessage(err.message)
+      setMessage({ text: err.message, tone: 'warn' })
     }
   }
 
@@ -219,7 +257,7 @@ function Designer({ procedureId, config, offices, monto, onPublish }) {
           <Workflow size={18} style={{ color: 'var(--arib-primary)' }} />
           <div>
             <b>Oficinas disponibles</b>
-            <span>Arrastra al lienzo de diseño</span>
+            <span>Arrastra al lienzo, o toca + en pantallas táctiles</span>
           </div>
         </div>
 
@@ -247,7 +285,14 @@ function Designer({ procedureId, config, offices, monto, onPublish }) {
                   <Building2 size={16} />
                 </span>
                 <b>{o.name}</b>
-                <GripVertical size={15} style={{ color: 'var(--arib-navy-light)' }} />
+                <button
+                  type="button"
+                  className="palette-office-add"
+                  onClick={() => addOfficeByClick(o.id)}
+                  title={`Agregar ${o.name} al lienzo`}
+                >
+                  <Plus size={13} />
+                </button>
               </div>
             ))}
         </div>
@@ -262,6 +307,12 @@ function Designer({ procedureId, config, offices, monto, onPublish }) {
           <small style={{ display: 'block', marginTop: 4, color: 'var(--arib-navy-light)', fontSize: 11 }}>
             Última actualización: {config.updatedAt || 'Hoy'}
           </small>
+          {dirty && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 8 }}>
+              <AlertTriangle size={12} style={{ color: '#b45309', flexShrink: 0 }} />
+              <small style={{ color: '#b45309', fontSize: 11, fontWeight: 700 }}>Cambios sin publicar</small>
+            </div>
+          )}
         </div>
       </aside>
 
@@ -286,13 +337,9 @@ function Designer({ procedureId, config, offices, monto, onPublish }) {
         </div>
 
         {message && (
-          <div className={`designer-message ${(message.includes('Publicada') || message.includes('auto-alineada')) && !message.includes('⚠') ? 'ok' : ''}`}>
-            {(message.includes('Publicada') || message.includes('auto-alineada')) && !message.includes('⚠') ? (
-              <CheckCircle2 size={16} />
-            ) : (
-              <AlertTriangle size={16} />
-            )}
-            <span>{message}</span>
+          <div className={`designer-message ${message.tone === 'ok' ? 'ok' : ''}`}>
+            {message.tone === 'ok' ? <CheckCircle2 size={16} /> : <AlertTriangle size={16} />}
+            <span>{message.text}</span>
           </div>
         )}
 
@@ -333,6 +380,16 @@ export default function WorkflowAdminView({
   const [procedureId, setProcedureId] = useState(procedures[0]?.id || '')
   const [search, setSearch] = useState('')
   const [procModal, setProcModal] = useState(null)
+  const [dirty, setDirty] = useState(false)
+
+  // El lienzo vive dentro de <Designer>, así que solo él sabe si hay cambios sin publicar
+  // (ver su efecto de comparación contra config.route). Antes de cambiar de trámite y
+  // perder ese trabajo sin aviso, se confirma con el admin.
+  const changeProcedure = id => {
+    if (id === procedureId) return
+    if (dirty && !window.confirm('Tienes cambios sin publicar en el diseñador de rutas de este trámite. Si continúas, se perderán. ¿Deseas continuar de todos modos?')) return
+    setProcedureId(id)
+  }
 
   const list = procedures.filter(p =>
     `${p.name} ${p.category}`.toLowerCase().includes(search.toLowerCase())
@@ -402,7 +459,7 @@ export default function WorkflowAdminView({
               <button
                 key={x.id}
                 className={procedureId === x.id ? 'active' : ''}
-                onClick={() => setProcedureId(x.id)}
+                onClick={() => changeProcedure(x.id)}
               >
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <b style={{ color: 'var(--arib-navy)', fontSize: 13 }}>{x.name}</b>
@@ -492,6 +549,7 @@ export default function WorkflowAdminView({
                   offices={offices}
                   monto={p.monto}
                   onPublish={onPublish}
+                  onDirtyChange={setDirty}
                 />
               </ReactFlowProvider>
             </>

@@ -1,5 +1,5 @@
 import React,{useMemo,useState} from 'react'
-import { Search, Stamp, Route, Plus, X, GripVertical, ArrowRight, ShieldCheck, Clock3, Sparkles, CheckCircle2, ChevronRight, FileCheck } from 'lucide-react'
+import { Search, Stamp, Route, Plus, X, ArrowRight, ShieldCheck, Clock3, Sparkles, CheckCircle2, ChevronRight, FileCheck } from 'lucide-react'
 import { Panel, StatusBadge, SlaBadge, Badge, Empty, RouteStrip, Timeline, FileList } from '../components/ui'
 import { officeName, procedureById } from '../data/catalogs'
 
@@ -182,12 +182,12 @@ export default function DireccionWorkbenchView({items,workflows,offices,permissi
                 <div className="route-edit-list">
                   {customRoute.map((id,i)=>(
                     <div className="route-edit-card" key={`${id}-${i}`}>
-                      <GripVertical size={16} color="#94a3b8"/>
+                      <span className="route-edit-step" title={`Paso ${i+3} de la ruta`}>{i+3}</span>
                       <b>{officeName(id)}</b>
                       {can('route.choose') && (
                         <div>
-                          <button type="button" onClick={()=>move(i,-1)} title="Mover antes">↑</button>
-                          <button type="button" onClick={()=>move(i,1)} title="Mover después">↓</button>
+                          <button type="button" onClick={()=>move(i,-1)} disabled={i===0} title="Mover antes">↑</button>
+                          <button type="button" onClick={()=>move(i,1)} disabled={i===customRoute.length-1} title="Mover después">↓</button>
                           <button type="button" onClick={()=>setCustomRoute(customRoute.filter((_,idx)=>idx!==i))} title="Quitar oficina">
                             <X size={13}/>
                           </button>

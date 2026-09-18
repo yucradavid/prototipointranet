@@ -5,7 +5,7 @@ import {
   TrendingUp, BarChart3, AlertCircle, ArrowUpRight, Wallet
 } from 'lucide-react'
 import { Kpi, Panel, StatusBadge, SlaBadge, Badge, RouteStrip, Empty } from '../components/ui'
-import { PROFILES, PERMISSIONS_CATALOG, officeName, rolePerms } from '../data/catalogs'
+import { PROFILES, PERMISSIONS_CATALOG, officeName, procedureById, rolePerms } from '../data/catalogs'
 import { slaInfo } from '../workflowEngine'
 
 export default function AdminControlView({ items, offices, setActiveView }) {
@@ -17,6 +17,10 @@ export default function AdminControlView({ items, offices, setActiveView }) {
   const observed = items.filter(x => x.estado === 'OBSERVADO')
   const inDirection = items.filter(x => x.estado === 'EN_DIRECCION')
   const overdue = items.filter(x => slaInfo(x)?.overdue)
+  // "Por vencer": todavía dentro de plazo pero a 2 días o menos de vencer, sin estar
+  // pausado (observado/pago pendiente) ni cerrado — el aviso temprano que faltaba: antes
+  // el admin solo se enteraba de un expediente cuando YA estaba fuera de SLA.
+  const dueSoon = items.filter(x => { const i = slaInfo(x); return i && !i.closed && !i.paused && !i.overdue && i.daysLeft <= 2 })
 
   const rows = useMemo(() => {
     let base = items
@@ -24,6 +28,7 @@ export default function AdminControlView({ items, offices, setActiveView }) {
     else if (filterState === 'DIRECCION') base = inDirection
     else if (filterState === 'OBSERVADO') base = observed
     else if (filterState === 'OVERDUE') base = overdue
+    else if (filterState === 'DUE_SOON') base = dueSoon
     else if (filterState === 'FINALIZADO') base = finalized
     else base = active // default to active
 
@@ -32,7 +37,25 @@ export default function AdminControlView({ items, offices, setActiveView }) {
         .toLowerCase()
         .includes(query.toLowerCase())
     )
-  }, [items, active, inDirection, observed, overdue, finalized, filterState, query])
+  }, [items, active, inDirection, observed, overdue, dueSoon, finalized, filterState, query])
+
+  // Ranking de trámites con más incidencias actuales. No se calcula un "tiempo promedio
+  // de atención" porque el historial solo guarda la hora (HH:MM) de cada paso, no la fecha
+  // — con el modelo de datos actual no hay forma honesta de medir cuántos días tomó un
+  // paso; esto mide lo que sí es confiable: cuánta carga observada/vencida acumula cada
+  // trámite en este momento.
+  const procedureStats = useMemo(() => {
+    const map = {}
+    items.filter(x => x.estado !== 'SOLICITUD_VIRTUAL').forEach(x => {
+      const key = x.procedureId
+      if (!key) return
+      if (!map[key]) map[key] = { id: key, name: procedureById(key)?.name || key, total: 0, observado: 0, overdue: 0 }
+      map[key].total += 1
+      if (x.estado === 'OBSERVADO') map[key].observado += 1
+      if (slaInfo(x)?.overdue) map[key].overdue += 1
+    })
+    return Object.values(map).sort((a, b) => (b.observado + b.overdue) - (a.observado + a.overdue))
+  }, [items])
 
   const operationalOffices = offices.filter(o => !['mesa_partes', 'direccion'].includes(o.id))
   const officeLoad = operationalOffices.map(o => {
@@ -62,8 +85,8 @@ export default function AdminControlView({ items, offices, setActiveView }) {
         </div>
       </div>
 
-      {/* 5 KPI Metric Cards */}
-      <div className="kpi-grid five">
+      {/* 6 KPI Metric Cards */}
+      <div className="kpi-grid six">
         <div
           onClick={() => setFilterState(filterState === 'ACTIVE' ? 'ALL' : 'ACTIVE')}
           style={{ cursor: 'pointer' }}
@@ -103,6 +126,20 @@ export default function AdminControlView({ items, offices, setActiveView }) {
             helper="Esperando al usuario"
             icon={AlertTriangle}
             tone="pink"
+          />
+        </div>
+
+        <div
+          onClick={() => setFilterState(filterState === 'DUE_SOON' ? 'ALL' : 'DUE_SOON')}
+          style={{ cursor: 'pointer' }}
+          title="Clic para filtrar expedientes por vencer en 2 días o menos"
+        >
+          <Kpi
+            label="Por vencer"
+            value={dueSoon.length}
+            helper="Vencen en 2 días o menos"
+            icon={AlertCircle}
+            tone="orange"
           />
         </div>
 
@@ -250,6 +287,45 @@ export default function AdminControlView({ items, offices, setActiveView }) {
               )
             })}
           </div>
+        </Panel>
+      </div>
+
+      {/* Procedure Incident Ranking */}
+      <div style={{ marginTop: 20 }}>
+        <Panel
+          title="Trámites con más incidencias"
+          subtitle="Trámites cuyos expedientes activos acumulan más observaciones o vencimientos de SLA en este momento — ayuda a priorizar qué ruta u requisitos revisar primero."
+        >
+          {procedureStats.length ? (
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Trámite</th>
+                    <th style={{ textAlign: 'center' }}>Activos</th>
+                    <th style={{ textAlign: 'center' }}>Observados</th>
+                    <th style={{ textAlign: 'center' }}>Fuera de SLA</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {procedureStats.slice(0, 8).map(p => (
+                    <tr key={p.id}>
+                      <td style={{ fontSize: 13, fontWeight: 600, color: 'var(--arib-navy)' }}>{p.name}</td>
+                      <td style={{ textAlign: 'center', fontSize: 12 }}>{p.total}</td>
+                      <td style={{ textAlign: 'center' }}>
+                        {p.observado > 0 ? <Badge tone="warning">{p.observado}</Badge> : <span style={{ color: 'var(--arib-navy-light)', fontSize: 12 }}>0</span>}
+                      </td>
+                      <td style={{ textAlign: 'center' }}>
+                        {p.overdue > 0 ? <Badge tone="danger">{p.overdue}</Badge> : <span style={{ color: 'var(--arib-navy-light)', fontSize: 12 }}>0</span>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <Empty title="Sin incidencias" text="Ningún trámite tiene expedientes activos por el momento." />
+          )}
         </Panel>
       </div>
 

@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { createVirtual,registerVirtual,issueProveido,observeAtOffice,correctObservation,completeOfficeStep,finalizeCase,validateWorkflowRoute,slaInfo,canDeleteOffice,canDeleteProcedure,authenticate,authenticateByEmail,redirectToOffice,routeProgress,validateRolePermissions,registerPayment,requiresPayment } from '../src/workflowEngine.js'
+import { createVirtual,registerVirtual,issueProveido,observeAtOffice,correctObservation,completeOfficeStep,finalizeCase,validateWorkflowRoute,slaInfo,canDeleteOffice,canDeleteProcedure,authenticate,authenticateByEmail,redirectToOffice,routeProgress,validateRolePermissions,registerPayment,requiresPayment,editPayment } from '../src/workflowEngine.js'
 import { procedureById } from '../src/data/catalogs.js'
 
 const base={procedureId:'const_biblioteca',ownerProfile:'estudiante',solicitante:'Demo',asunto:'Constancia',adjuntos:[],numeroFolios:1,fecha:'01/01/2026',hora:'08:00'}
@@ -141,6 +141,29 @@ test('el historial registra quién realmente hizo la acción, no solo el nombre 
  // Sin actor explícito, se mantiene el comportamiento genérico de siempre (compatibilidad).
  const p2=issueProveido(registerVirtual(createVirtual(base,6002,'08:00'),'08:05'),{proveido:'PASE',routePlan:['biblioteca'],routeVersion:1},'08:10')
  assert.equal(p2.historial.at(-1).actor,'Dirección')
+})
+
+test('editPayment permite corregir el monto de un pago ya registrado, como control adicional exclusivo del Administrador',()=>{
+ const paidBase={...base,procedureId:'cert_modular'}
+ const r=registerVirtual(createVirtual(paidBase,6001,'08:00'),'08:05')
+ const p=issueProveido(r,{proveido:'PASE',routePlan:['tesoreria'],routeVersion:1},'08:10')
+ const paid=registerPayment(p,{monto:25,voucher:'OP-999'},'08:15','Jefe de Unidad Administrativa de Tesorería (Jefe de Unidad Administrativa de Tesorería)')
+ // No se puede corregir un pago que no existe.
+ const sinPago=issueProveido(registerVirtual(createVirtual(base,6002,'08:00'),'08:05'),{proveido:'PASE',routePlan:['biblioteca'],routeVersion:1},'08:10')
+ assert.throws(()=>editPayment(sinPago,{monto:10},'08:20','Administrador ARIB (Administrador)'),/pago registrado/)
+ // Debe rechazar montos inválidos o iguales al ya registrado.
+ assert.throws(()=>editPayment(paid,{monto:0},'08:20','Administrador ARIB (Administrador)'))
+ assert.throws(()=>editPayment(paid,{monto:25},'08:20','Administrador ARIB (Administrador)'),/distinto/)
+ // Corrección válida: actualiza el monto, conserva quién registró el pago originalmente,
+ // y deja constancia en el historial de quién corrigió y cuándo.
+ const corregido=editPayment(paid,{monto:30},'08:25','Administrador ARIB (Administrador)')
+ assert.equal(corregido.pago.monto,30)
+ assert.equal(corregido.pago.registradoPor,'Jefe de Unidad Administrativa de Tesorería (Jefe de Unidad Administrativa de Tesorería)')
+ assert.equal(corregido.pago.editadoPor,'Administrador ARIB (Administrador)')
+ assert.equal(corregido.pago.editadoAt,'08:25')
+ assert.equal(corregido.historial.at(-1).actor,'Administrador ARIB (Administrador)')
+ assert.equal(corregido.historial.at(-1).action,'Pago corregido')
+ assert.match(corregido.historial.at(-1).text,/S\/ 25\.00 a S\/ 30\.00/)
 })
 
 test('registerPayment solo se registra en Tesorería y con el expediente en atención',()=>{

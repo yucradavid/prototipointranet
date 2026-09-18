@@ -1,5 +1,5 @@
 import React,{useState} from 'react'
-import { LockKeyhole, Mail, ArrowRight, ShieldCheck, GraduationCap, Inbox, Building2, UserRound, Sparkles, CheckCircle2, FileCheck2 } from 'lucide-react'
+import { LockKeyhole, Mail, ArrowRight, ShieldCheck, GraduationCap, Inbox, Building2, UserRound, Sparkles, CheckCircle2, FileCheck2, ChevronDown, FlaskConical } from 'lucide-react'
 import { PROFILES } from '../data/catalogs'
 
 const DEMO_PROFILES=PROFILES.filter(p=>p.id!=='oficina')
@@ -23,13 +23,17 @@ const GoogleIcon=({size=18})=>(
 )
 
 export default function LoginView({onLogin,onCredentialLogin,onGoogleLogin,offices=[],onOfficeQuickLogin}){
-  const [username,setUsername]=useState('admin')
-  const [password,setPassword]=useState('admin123')
+  const [username,setUsername]=useState('')
+  const [password,setPassword]=useState('')
   const [error,setError]=useState('')
   const [googleOpen,setGoogleOpen]=useState(false)
   const [googleEmail,setGoogleEmail]=useState('')
   const [googleError,setGoogleError]=useState('')
   const [officeError,setOfficeError]=useState('')
+  // Los accesos rápidos de demostración (perfiles y oficinas sin contraseña) quedan
+  // plegados por defecto: son solo para pruebas/demo y no deben confundirse con el
+  // ingreso real por credenciales, que es lo primero que ve cualquier usuario real.
+  const [demoOpen,setDemoOpen]=useState(false)
 
   const routableOffices=offices.filter(o=>!['mesa_partes','direccion'].includes(o.id))
   const tryOfficeLogin=office=>{
@@ -165,39 +169,45 @@ export default function LoginView({onLogin,onCredentialLogin,onGoogleLogin,offic
           </button>
         </form>
 
-        <div className="demo-divider">
-          <span>ACCESOS DIRECTOS PARA DEMOSTRACIÓN</span>
-        </div>
+        <button type="button" className="demo-toggle" onClick={()=>setDemoOpen(o=>!o)}>
+          <FlaskConical size={14}/>
+          <span>Accesos de demostración (sin contraseña)</span>
+          <ChevronDown size={14} style={{transform:demoOpen?'rotate(180deg)':'none',transition:'transform 0.15s'}}/>
+        </button>
 
-        <div className="demo-profiles">
-          {DEMO_PROFILES.map(p=>{
-            const Icon=icons[p.id]||UserRound
-            return (
-              <button key={p.id} type="button" onClick={()=>onLogin(p.id)} title={`Entrar como ${p.label}`}>
-                <Icon size={16} color="#0284c7" style={{flex:'none',marginTop:2}}/>
-                <div>
-                  <b>{p.label}</b>
-                  <span>{p.description}</span>
-                </div>
-              </button>
-            )
-          })}
-        </div>
-
-        {routableOffices.length>0&&(
+        {demoOpen&&(
           <>
-            <div className="demo-divider">
-              <span>ACCESO DIRECTO POR OFICINA</span>
+            <div className="demo-profiles">
+              {DEMO_PROFILES.map(p=>{
+                const Icon=icons[p.id]||UserRound
+                return (
+                  <button key={p.id} type="button" onClick={()=>onLogin(p.id)} title={`Entrar como ${p.label}`}>
+                    <Icon size={16} color="#0284c7" style={{flex:'none',marginTop:2}}/>
+                    <div>
+                      <b>{p.label}</b>
+                      <span>{p.description}</span>
+                    </div>
+                  </button>
+                )
+              })}
             </div>
-            <div className="office-tabs">
-              {routableOffices.map(o=>(
-                <button key={o.id} type="button" className="office-tab" onClick={()=>tryOfficeLogin(o)} title={`Entrar como ${o.roleTitle||'Encargado'} de ${o.name}`}>
-                  <Building2 size={16} color="#0284c7" style={{flex:'none'}}/>
-                  <span>{o.name}</span>
-                </button>
-              ))}
-            </div>
-            {officeError&&<div className="login-error">{officeError}</div>}
+
+            {routableOffices.length>0&&(
+              <>
+                <div className="demo-divider">
+                  <span>ACCESO DIRECTO POR OFICINA</span>
+                </div>
+                <div className="office-tabs">
+                  {routableOffices.map(o=>(
+                    <button key={o.id} type="button" className="office-tab" onClick={()=>tryOfficeLogin(o)} title={`Entrar como ${o.roleTitle||'Encargado'} de ${o.name}`}>
+                      <Building2 size={16} color="#0284c7" style={{flex:'none'}}/>
+                      <span>{o.name}</span>
+                    </button>
+                  ))}
+                </div>
+                {officeError&&<div className="login-error">{officeError}</div>}
+              </>
+            )}
           </>
         )}
       </div>

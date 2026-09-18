@@ -263,6 +263,7 @@ export default function ApplicantPortalView({profileId,items,procedures,currentU
                     <div>
                       <b>{x.numero ? `EXP ${x.numero}` : x.tracking}</b>
                       <StatusBadge status={x.estado}/>
+                      <SlaBadge exp={x}/>
                     </div>
                     <strong>{x.asunto}</strong>
                     <span>{x.fecha} · {x.hora} · {x.numeroFolios} folio(s)</span>

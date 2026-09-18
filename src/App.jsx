@@ -1,4 +1,4 @@
-import React,{useEffect,useMemo,useState} from 'react'
+import React,{Suspense,lazy,useEffect,useMemo,useState} from 'react'
 import AppShell from './components/AppShell'
 import { Toast } from './components/ui'
 import ConfirmModal from './components/ConfirmModal'
@@ -6,18 +6,21 @@ import ApplicantPortalView from './views/ApplicantPortalView'
 import SecretariaWorkbenchView from './views/SecretariaWorkbenchView'
 import DireccionWorkbenchView from './views/DireccionWorkbenchView'
 import OfficeWorkbenchView from './views/OfficeWorkbenchView'
-import AdminOfficeOperationsView from './views/AdminOfficeOperationsView'
-import AdminControlView from './views/AdminControlView'
-import WorkflowAdminView from './views/WorkflowAdminView'
-import CatalogAdminView from './views/CatalogAdminView'
-import BookAuditView from './views/BookAuditView'
-import CashReportView from './views/CashReportView'
 import TrackingView from './views/TrackingView'
 import LoginView from './views/LoginView'
+// Vistas de uso exclusivo o mayormente administrativo: se cargan bajo demanda para que un
+// estudiante/docente/oficina no descargue nunca el panel admin ni el diseñador de rutas
+// (que carga @xyflow/react, la dependencia más pesada del proyecto).
+const AdminOfficeOperationsView=lazy(()=>import('./views/AdminOfficeOperationsView'))
+const AdminControlView=lazy(()=>import('./views/AdminControlView'))
+const WorkflowAdminView=lazy(()=>import('./views/WorkflowAdminView'))
+const CatalogAdminView=lazy(()=>import('./views/CatalogAdminView'))
+const BookAuditView=lazy(()=>import('./views/BookAuditView'))
+const CashReportView=lazy(()=>import('./views/CashReportView'))
 import { slugify, setOfficesCatalog, setProceduresCatalog, setRolePermissionsCatalog, setPaymentInfoCatalog, officeName, procedureById, roleViews, rolePerms, roleLabel, PROFILES } from './data/catalogs'
 import { parseStudentsCsv } from './data/userImport'
 import { loadExpedientes,saveExpedientes,loadWorkflows,saveWorkflows,loadOffices,saveOffices,loadProcedures,saveProcedures,loadUsers,saveUsers,loadRolePermissions,saveRolePermissions,loadPaymentInfo,savePaymentInfo,loadAuditLog,saveAuditLog,loadSession,saveSession,clearSession,resetAll,nextNumero } from './repositories/prototypeRepository'
-import { createVirtual,registerVirtual,createPhysical,issueProveido,observeAtOffice,correctObservation,completeOfficeStep,finalizeCase,validateWorkflowRoute,validateRolePermissions,slaInfo,canDeleteOffice,canDeleteProcedure,authenticate,authenticateByEmail,redirectToOffice,registerPayment } from './workflowEngine'
+import { createVirtual,registerVirtual,createPhysical,issueProveido,observeAtOffice,correctObservation,completeOfficeStep,finalizeCase,validateWorkflowRoute,validateRolePermissions,slaInfo,canDeleteOffice,canDeleteProcedure,authenticate,authenticateByEmail,redirectToOffice,registerPayment,editPayment } from './workflowEngine'
 
 const today=()=>new Intl.DateTimeFormat('es-PE',{day:'2-digit',month:'2-digit',year:'numeric'}).format(new Date())
 const time=()=>new Date().toLocaleTimeString('es-PE',{hour:'2-digit',minute:'2-digit',hour12:false})
@@ -73,7 +76,12 @@ export default function App(){
   const onFinalize=exp=>{update(exp.id,x=>finalizeCase(x,time(),actorLabel()));notify(`EXP ${exp.numero} finalizado`)}
   const onRedirect=(exp,payload)=>{update(exp.id,x=>redirectToOffice(x,payload,time(),actorLabel()));notify(`Expediente redirigido a otra oficina`)}
   const onRegisterPayment=(exp,payload)=>{const result=update(exp.id,x=>registerPayment(x,payload,time(),actorLabel()));if(result)notify(`Pago de S/ ${Number(payload.monto).toFixed(2)} registrado para EXP ${result.numero}`);return result}
-  const onPublishWorkflow=(procedureId,route)=>{setWorkflows(w=>({...w,[procedureId]:{...(w[procedureId]||{}),route:[...route],version:(w[procedureId]?.version||0)+1,status:'PUBLICADO',updatedAt:'Ahora'}}));notify('Nueva versión de ruta publicada')}
+  const onEditPayment=(exp,payload)=>{const montoAnterior=Number(exp.pago?.monto);const result=update(exp.id,x=>editPayment(x,payload,time(),actorLabel()));if(result){notify(`Monto corregido de S/ ${montoAnterior.toFixed(2)} a S/ ${Number(payload.monto).toFixed(2)} en EXP ${result.numero}`);logAction('Pago corregido',`EXP ${result.numero}: S/ ${montoAnterior.toFixed(2)} → S/ ${Number(payload.monto).toFixed(2)}`)}return result}
+  const onPublishWorkflow=(procedureId,route)=>{
+    const nextVersion=(workflows[procedureId]?.version||0)+1
+    setWorkflows(w=>({...w,[procedureId]:{...(w[procedureId]||{}),route:[...route],version:nextVersion,status:'PUBLICADO',updatedAt:'Ahora'}}))
+    notify(`Ruta v${nextVersion} de "${procedureById(procedureId)?.name||procedureId}" publicada correctamente`)
+  }
 
   const onSaveOffice=data=>{
     const isNew=!data.id
@@ -165,6 +173,12 @@ export default function App(){
     logAction(willBeActive?'Usuario reactivado':'Usuario desactivado',target?`${target.fullName} (${target.username})`:id)
     notify('Estado del usuario actualizado')
   }
+  const onBulkSetActive=(ids,active)=>{
+    if(!ids?.length)return
+    setUsers(curr=>curr.map(u=>ids.includes(u.id)?{...u,active}:u))
+    logAction(active?'Usuarios reactivados (masivo)':'Usuarios desactivados (masivo)',`${ids.length} cuenta(s)`)
+    notify(`${ids.length} usuario(s) ${active?'activado(s)':'desactivado(s)'}`)
+  }
   const onImportStudents=text=>{
     const {rows,errors}=parseStudentsCsv(text)
     const skipped=[...errors]
@@ -204,6 +218,7 @@ export default function App(){
   const alerts=useMemo(()=>{
     if(profileId==='admin') return [
       ...items.filter(x=>slaInfo(x)?.overdue).map(x=>`EXP ${x.numero} vencido según SLA · en ${officeName(x.oficinaActual)}`),
+      ...items.filter(x=>{const i=slaInfo(x);return i&&!i.closed&&!i.paused&&!i.overdue&&i.daysLeft<=2}).map(x=>`EXP ${x.numero} por vencer (${slaInfo(x).daysLeft}d) · en ${officeName(x.oficinaActual)}`),
       ...items.filter(x=>x.estado==='OBSERVADO').map(x=>`EXP ${x.numero} observado, esperando subsanación`),
       ...items.filter(x=>(procedureById(x.procedureId)?.monto||0)>0&&x.pago?.estado!=='PAGADO'&&!['FINALIZADO','SOLICITUD_VIRTUAL'].includes(x.estado)).map(x=>`EXP ${x.numero} con pago pendiente (S/ ${Number(procedureById(x.procedureId)?.monto).toFixed(2)})`),
     ]
@@ -225,11 +240,11 @@ export default function App(){
   },[loggedIn,profileId,rolePermissions])
 
   let content
-  if(profileId==='estudiante'||profileId==='docente') content=activeView==='tracking'?<TrackingView items={items}/>:<ApplicantPortalView profileId={profileId} items={items} procedures={procedures} currentUser={currentUser} permissions={myPermissions} onCreateVirtual={onCreateVirtual} onCorrect={onCorrect}/>
+  if(profileId==='estudiante'||profileId==='docente') content=activeView==='tracking'?<TrackingView items={items} profileId={profileId} currentUser={currentUser}/>:<ApplicantPortalView profileId={profileId} items={items} procedures={procedures} currentUser={currentUser} permissions={myPermissions} onCreateVirtual={onCreateVirtual} onCorrect={onCorrect}/>
   else if(profileId==='secretaria') content=activeView==='book'?<BookAuditView items={items}/>:activeView==='tracking'?<TrackingView items={items}/>:<SecretariaWorkbenchView items={items} procedures={procedures} permissions={myPermissions} onRegisterVirtual={onRegisterVirtual} onCreatePhysical={onCreatePhysical} onFinalize={onFinalize}/>
   else if(profileId==='direccion') content=activeView==='book'?<BookAuditView items={items}/>:activeView==='tracking'?<TrackingView items={items}/>:<DireccionWorkbenchView items={items} workflows={workflows} offices={offices} permissions={myPermissions} onProveido={onProveido}/>
   else if(profileId==='oficina') content=activeView==='book'?<BookAuditView items={items}/>:activeView==='tracking'?<TrackingView items={items}/>:<OfficeWorkbenchView officeId={officeId} items={items} offices={offices} permissions={myPermissions} onObserve={onObserve} onComplete={onComplete} onRedirect={onRedirect} onRegisterPayment={onRegisterPayment}/>
-  else content=activeView==='workflow'?<WorkflowAdminView workflows={workflows} offices={offices} procedures={procedures} onPublish={onPublishWorkflow} onSaveProcedure={onSaveProcedure} onDeleteProcedure={onDeleteProcedure}/>:activeView==='catalog'?<CatalogAdminView offices={offices} procedures={procedures} users={users} rolePermissions={rolePermissions} paymentInfo={paymentInfo} auditLog={auditLog} onSaveOffice={onSaveOffice} onDeleteOffice={onDeleteOffice} onSaveProcedure={onSaveProcedure} onDeleteProcedure={onDeleteProcedure} onSaveUser={onSaveUser} onDeleteUser={onDeleteUser} onResetPassword={onResetPassword} onToggleUserActive={onToggleUserActive} onImportStudents={onImportStudents} onSaveRolePermissions={onSaveRolePermissions} onSavePaymentInfo={onSavePaymentInfo}/>:activeView==='book'?<BookAuditView items={items}/>:activeView==='caja'?<CashReportView items={items}/>:activeView==='oficinas'?<AdminOfficeOperationsView officeId={officeId} setOfficeId={setOfficeId} items={items} offices={offices} permissions={myPermissions} onObserve={onObserve} onComplete={onComplete} onRedirect={onRedirect} onRegisterPayment={onRegisterPayment}/>:activeView==='tracking'?<TrackingView items={items}/>:<AdminControlView items={items} offices={offices} setActiveView={setActiveView}/>
+  else content=activeView==='workflow'?<WorkflowAdminView workflows={workflows} offices={offices} procedures={procedures} onPublish={onPublishWorkflow} onSaveProcedure={onSaveProcedure} onDeleteProcedure={onDeleteProcedure}/>:activeView==='catalog'?<CatalogAdminView offices={offices} procedures={procedures} users={users} rolePermissions={rolePermissions} paymentInfo={paymentInfo} auditLog={auditLog} onSaveOffice={onSaveOffice} onDeleteOffice={onDeleteOffice} onSaveProcedure={onSaveProcedure} onDeleteProcedure={onDeleteProcedure} onSaveUser={onSaveUser} onDeleteUser={onDeleteUser} onResetPassword={onResetPassword} onToggleUserActive={onToggleUserActive} onBulkSetActive={onBulkSetActive} onImportStudents={onImportStudents} onSaveRolePermissions={onSaveRolePermissions} onSavePaymentInfo={onSavePaymentInfo}/>:activeView==='book'?<BookAuditView items={items}/>:activeView==='caja'?<CashReportView items={items} permissions={myPermissions} onEditPayment={onEditPayment}/>:activeView==='oficinas'?<AdminOfficeOperationsView officeId={officeId} setOfficeId={setOfficeId} items={items} offices={offices} permissions={myPermissions} onObserve={onObserve} onComplete={onComplete} onRedirect={onRedirect} onRegisterPayment={onRegisterPayment}/>:activeView==='tracking'?<TrackingView items={items}/>:<AdminControlView items={items} offices={offices} setActiveView={setActiveView}/>
 
   const login=(id)=>{setCurrentUser(null);setProfileId(id);setActiveView(id==='admin'?'control':id==='estudiante'||id==='docente'?'portal':'work');setLoggedIn(true)}
   const loginAsUser=user=>{
@@ -257,5 +272,5 @@ export default function App(){
   }
   const onLogout=()=>{setLoggedIn(false);setCurrentUser(null)}
   if(!loggedIn)return <LoginView onLogin={login} onCredentialLogin={onCredentialLogin} onGoogleLogin={onGoogleLogin} offices={offices} onOfficeQuickLogin={onOfficeQuickLogin}/>
-  return <><AppShell profileId={profileId} setProfileId={setProfileId} currentUser={currentUser} activeView={activeView} setActiveView={setActiveView} alerts={alerts} myViews={myViews} onReset={reset} onLogout={onLogout} onChangeOwnPassword={onChangeOwnPassword}>{content}</AppShell><Toast message={toast.message} type={toast.type}/><ConfirmModal open={!!confirmState} message={confirmState?.message} confirmLabel={confirmState?.confirmLabel} danger={confirmState?.danger} onConfirm={confirmState?.onConfirm} onCancel={()=>setConfirmState(null)}/></>
+  return <><AppShell profileId={profileId} setProfileId={setProfileId} currentUser={currentUser} activeView={activeView} setActiveView={setActiveView} alerts={alerts} myViews={myViews} onReset={reset} onLogout={onLogout} onChangeOwnPassword={onChangeOwnPassword}><Suspense fallback={<div className="role-page"><p style={{color:'var(--arib-navy-light)',fontSize:13}}>Cargando módulo…</p></div>}>{content}</Suspense></AppShell><Toast message={toast.message} type={toast.type}/><ConfirmModal open={!!confirmState} message={confirmState?.message} confirmLabel={confirmState?.confirmLabel} danger={confirmState?.danger} onConfirm={confirmState?.onConfirm} onCancel={()=>setConfirmState(null)}/></>
 }

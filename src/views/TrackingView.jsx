@@ -5,28 +5,41 @@ import ReciboPagoModal from '../components/ReciboPagoModal'
 
 const QUICK_SEARCH_EXAMPLES = ['5225', '5226', '5227', 'ARIB-5225', '71234567']
 
-export default function TrackingView({ items }) {
-  const [q, setQ] = useState('5225')
+// Un estudiante/docente que inicia sesión aquí NO debe poder buscar expedientes ajenos
+// solo adivinando un número o un DNI — esta vista también la usan Secretaría, Dirección
+// y las oficinas, que sí necesitan buscar entre TODOS los expedientes para su trabajo.
+// Por eso el alcance se restringe únicamente para el rol solicitante, igual que ya se
+// restringe en el portal (ApplicantPortalView) y en las alertas (App.jsx).
+export default function TrackingView({ items, profileId, currentUser }) {
+  const isApplicant = profileId === 'estudiante' || profileId === 'docente'
+  const ownItems = isApplicant
+    ? items.filter(x => currentUser ? x.ownerUserId === currentUser.id : x.ownerProfile === profileId)
+    : items
+  const scope = isApplicant ? ownItems : items
+
+  const [q, setQ] = useState(isApplicant ? '' : '5225')
   const [selectedId, setSelectedId] = useState(null)
   const [reciboExp, setReciboExp] = useState(null)
 
-  const results = items.filter(x =>
+  const results = scope.filter(x =>
     `${x.numero || ''} ${x.tracking || ''} ${x.solicitante} ${x.dni || ''}`
       .toLowerCase()
       .includes(q.toLowerCase())
   )
 
-  const selected = items.find(x => x.id === selectedId) || results[0]
+  const selected = scope.find(x => x.id === selectedId) || results[0]
 
   return (
     <div className="role-page">
       {/* Hero Header */}
       <div className="hero-row">
         <div>
-          <span className="eyebrow">CONSULTA PÚBLICA Y CIUDADANA</span>
-          <h1>Seguimiento y Trazabilidad de Expedientes</h1>
+          <span className="eyebrow">{isApplicant ? 'MIS SOLICITUDES' : 'CONSULTA OPERATIVA INTERNA'}</span>
+          <h1>{isApplicant ? 'Seguimiento de mis expedientes' : 'Seguimiento y Trazabilidad de Expedientes'}</h1>
           <p>
-            Verifica el estado en tiempo real, la oficina actual y el recorrido de tu solicitud con tu N.° de Expediente, código de seguimiento o DNI.
+            {isApplicant
+              ? 'Verifica el estado en tiempo real, la oficina actual y el recorrido de las solicitudes que has presentado.'
+              : 'Verifica el estado en tiempo real, la oficina actual y el recorrido de cualquier expediente por N.° de Expediente, código de seguimiento o DNI.'}
           </p>
         </div>
       </div>
@@ -50,7 +63,7 @@ export default function TrackingView({ items }) {
         <input
           value={q}
           onChange={e => setQ(e.target.value)}
-          placeholder="Ingresa tu N.° de expediente (ej. 5225), código temporal (ARIB-5225) o número de DNI…"
+          placeholder={isApplicant ? 'Filtrar tus solicitudes por número o asunto…' : 'Ingresa el N.° de expediente (ej. 5225), código temporal (ARIB-5225) o número de DNI…'}
           style={{
             border: 'none',
             outline: 'none',
@@ -72,23 +85,25 @@ export default function TrackingView({ items }) {
         )}
       </div>
 
-      {/* Quick Search Chips */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
-        <span style={{ fontSize: 12, color: 'var(--arib-navy-light)', fontWeight: 600 }}>
-          Búsquedas de ejemplo:
-        </span>
-        {QUICK_SEARCH_EXAMPLES.map(sample => (
-          <button
-            key={sample}
-            type="button"
-            className="btn ghost"
-            style={{ fontSize: 11, padding: '3px 8px', height: 'auto', background: 'var(--arib-surface-subtle)' }}
-            onClick={() => setQ(sample)}
-          >
-            {sample}
-          </button>
-        ))}
-      </div>
+      {/* Quick Search Chips — solo tiene sentido cuando se busca entre TODOS los expedientes */}
+      {!isApplicant && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 12, color: 'var(--arib-navy-light)', fontWeight: 600 }}>
+            Búsquedas de ejemplo:
+          </span>
+          {QUICK_SEARCH_EXAMPLES.map(sample => (
+            <button
+              key={sample}
+              type="button"
+              className="btn ghost"
+              style={{ fontSize: 11, padding: '3px 8px', height: 'auto', background: 'var(--arib-surface-subtle)' }}
+              onClick={() => setQ(sample)}
+            >
+              {sample}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Master Detail Grid */}
       <div className="tracking-grid">
@@ -109,9 +124,12 @@ export default function TrackingView({ items }) {
                     <Route size={18} />
                   </div>
                   <div className="case-main">
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
                       <b>{x.numero ? `EXP ${x.numero}` : x.tracking}</b>
-                      <StatusBadge status={x.estado} />
+                      <div style={{ display: 'flex', gap: 4 }}>
+                        <StatusBadge status={x.estado} />
+                        <SlaBadge exp={x} />
+                      </div>
                     </div>
                     <strong>{x.asunto}</strong>
                     <span style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 4 }}>
@@ -123,7 +141,9 @@ export default function TrackingView({ items }) {
             ) : (
               <Empty
                 title="Sin coincidencias"
-                text="No encontramos expedientes con ese término de búsqueda. Verifica el número o escribe tu DNI."
+                text={isApplicant
+                  ? (ownItems.length ? 'Ninguna de tus solicitudes coincide con ese término de búsqueda.' : 'Aún no has presentado ninguna solicitud.')
+                  : 'No encontramos expedientes con ese término de búsqueda. Verifica el número o escribe el DNI.'}
               />
             )}
           </div>

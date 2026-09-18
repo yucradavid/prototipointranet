@@ -98,6 +98,7 @@ export const PERMISSIONS_CATALOG = [
   {key:'case.observe', label:'Observar expedientes'},
   {key:'case.forward', label:'Redirigir a otra oficina'},
   {key:'case.pay', label:'Registrar pagos en Tesorería'},
+  {key:'case.pay_edit', label:'Corregir el monto de un pago ya registrado'},
   {key:'system.manage', label:'Administrar el sistema'},
   {key:'workflow.manage', label:'Administrar trámites y rutas'},
   {key:'users.manage', label:'Administrar usuarios'},
@@ -111,7 +112,7 @@ export const DEFAULT_ROLE_PERMISSIONS = {
   secretaria:{views:['work','book','tracking'], permissions:['case.register','case.receive','case.close','book.view']},
   direccion:{views:['work','tracking'], permissions:['case.proveido','route.choose','case.view']},
   oficina:{views:['work','tracking'], permissions:['case.attend','case.observe','case.forward','case.pay']},
-  admin:{views:['control','workflow','catalog','book','caja','oficinas','tracking'], permissions:['system.manage','workflow.manage','users.manage','audit.view','reports.view','case.attend','case.observe','case.forward','case.pay']},
+  admin:{views:['control','workflow','catalog','book','caja','oficinas','tracking'], permissions:['system.manage','workflow.manage','users.manage','audit.view','reports.view','case.attend','case.observe','case.forward','case.pay','case.pay_edit']},
 }
 
 // Igual que OFFICES/PROCEDURES: el prototipo permite a Administrador reconfigurar

@@ -68,6 +68,9 @@ export function loadRolePermissions(){
       const missing=officePerms.filter(p=>!stored.admin.permissions.includes(p))
       if(missing.length)stored.admin.permissions=[...stored.admin.permissions,...missing]
     }
+    // Migración: como control adicional, solo Administrador puede corregir el monto de un
+    // pago ya registrado. Se agrega exclusivamente a admin; oficina (Tesorería) nunca lo recibe.
+    if(stored.admin&&!stored.admin.permissions.includes('case.pay_edit'))stored.admin.permissions=[...stored.admin.permissions,'case.pay_edit']
     return stored
   }catch{return clone(DEFAULT_ROLE_PERMISSIONS)}
 }

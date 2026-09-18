@@ -2,7 +2,7 @@ import React from 'react'
 import { X, CheckCircle2, AlertTriangle, Info, Clock3, FileText, ChevronRight, Circle, ExternalLink, HardDrive, Wallet, Receipt, ShieldCheck } from 'lucide-react'
 import { statusLabel, statusTone } from '../models/expediente'
 import { officeName, procedureById, PAYMENT_INFO } from '../data/catalogs'
-import { routeProgress, slaInfo } from '../workflowEngine'
+import { routeProgress, slaInfo, requiresPayment } from '../workflowEngine'
 
 export function Badge({children,tone='neutral'}){
   return <span className={`badge ${tone}`}>{children}</span>
@@ -172,24 +172,40 @@ export function RouteStrip({exp,compact=false}){
     {id:'mesa_partes_cierre',label:'Cierre'}
   ]
   const active=exp?routeProgress(exp).completed:-1
+  // Por qué el expediente está detenido en el paso actual: dato real (estado, pago), no
+  // una distinción "en cola / en revisión" que el modelo de datos no puede sustentar.
+  const currentNote=exp?.estado==='OBSERVADO'
+    ? 'Esperando tu subsanación'
+    : exp&&requiresPayment(exp)
+      ? 'Esperando el pago del derecho de trámite'
+      : exp?.estado==='EN_OFICINA'
+        ? 'En atención'
+        : ''
   return (
-    <div className={`route-strip ${compact?'compact':''}`}>
-      {steps.map((s,i)=>{
-        const done=exp?.estado==='FINALIZADO'||i<active
-        const current=i===active
-        return (
-          <React.Fragment key={`${s.id}-${i}`}>
-            <div className={`route-step ${done?'done':''} ${current?'current':''}`}>
-              <span>
-                {done ? <CheckCircle2 size={15}/> : current ? <Clock3 size={15}/> : <Circle size={13}/>}
-              </span>
-              <b>{s.label}</b>
-            </div>
-            {i<steps.length-1 && <ChevronRight className="route-arrow" size={15}/>}
-          </React.Fragment>
-        )
-      })}
-    </div>
+    <>
+      <div className={`route-strip ${compact?'compact':''}`}>
+        {steps.map((s,i)=>{
+          const done=exp?.estado==='FINALIZADO'||i<active
+          const current=i===active
+          return (
+            <React.Fragment key={`${s.id}-${i}`}>
+              <div className={`route-step ${done?'done':''} ${current?'current':''}`} title={current&&currentNote?currentNote:undefined}>
+                <span>
+                  {done ? <CheckCircle2 size={15}/> : current ? <Clock3 size={15}/> : <Circle size={13}/>}
+                </span>
+                <b>{s.label}</b>
+              </div>
+              {i<steps.length-1 && <ChevronRight className="route-arrow" size={15}/>}
+            </React.Fragment>
+          )
+        })}
+      </div>
+      {!compact&&currentNote&&(
+        <p style={{margin:'6px 0 0',fontSize:12,color:'var(--arib-navy-light)',display:'flex',alignItems:'center',gap:5}}>
+          <Clock3 size={12}/> {currentNote}
+        </p>
+      )}
+    </>
   )
 }
 

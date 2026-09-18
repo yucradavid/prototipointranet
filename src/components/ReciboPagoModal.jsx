@@ -150,6 +150,12 @@ export default function ReciboPagoModal({ exp, onClose }) {
                     </a>
                   </div>
                 )}
+                {pago.editadoAt && (
+                  <div className="span2" style={{ gridColumn: 'span 2' }}>
+                    <span style={{ color: '#b45309', display: 'block' }}>Monto corregido por {pago.editadoPor || 'Administrador'}:</span>
+                    <b style={{ color: '#b45309' }}>{pago.editadoAt}</b>
+                  </div>
+                )}
               </div>
             </div>
 

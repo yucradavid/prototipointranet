@@ -1,21 +1,44 @@
-import React, { useMemo, useState } from 'react'
-import { Search, Download, BookOpen, FileText, CheckCircle2, UserRound, ShieldCheck, Clock3, Eye } from 'lucide-react'
+import React, { useEffect, useMemo, useState } from 'react'
+import { Search, Download, BookOpen, FileText, CheckCircle2, UserRound, ShieldCheck, Clock3, Eye, ChevronLeft, ChevronRight } from 'lucide-react'
 import { Panel, StatusBadge, SlaBadge, Badge, Empty, Timeline } from '../components/ui'
 import { officeName, procedureById } from '../data/catalogs'
 import { slaInfo } from '../workflowEngine'
 
+const PAGE_SIZE = 25
+
+// x.fecha se guarda en formato "dd/mm/aaaa" (ver today() en App.jsx). Se convierte a
+// "aaaa-mm-dd" para poder compararlo con un <input type="date">.
+const toIsoDate = fecha => {
+  const [d, m, y] = (fecha || '').split('/')
+  return d && m && y ? `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}` : ''
+}
+
 export default function BookAuditView({ items }) {
   const [q, setQ] = useState('')
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
+  const [page, setPage] = useState(1)
   const [selectedId, setSelectedId] = useState(null)
 
   const rows = useMemo(() => {
     return items
       .filter(x => x.numero && x.estado !== 'SOLICITUD_VIRTUAL')
       .filter(x => `${x.numero} ${x.solicitante} ${x.asunto} ${x.estado}`.toLowerCase().includes(q.toLowerCase()))
+      .filter(x => {
+        const iso = toIsoDate(x.fecha)
+        if (dateFrom && iso && iso < dateFrom) return false
+        if (dateTo && iso && iso > dateTo) return false
+        return true
+      })
       .sort((a, b) => b.numero - a.numero)
-  }, [items, q])
+  }, [items, q, dateFrom, dateTo])
 
-  const selected = items.find(x => x.id === selectedId) || rows[0]
+  useEffect(() => { setPage(1) }, [q, dateFrom, dateTo])
+
+  const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE))
+  const pageRows = rows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+
+  const selected = items.find(x => x.id === selectedId) || pageRows[0] || rows[0]
 
   const paymentLabel = x => {
     const monto = procedureById(x.procedureId)?.monto || 0
@@ -86,13 +109,22 @@ export default function BookAuditView({ items }) {
           title="Libro Oficial de Registro"
           subtitle={`${rows.length} expediente(s) registrados formalmente`}
           actions={
-            <div className="search-mini">
-              <Search size={15} />
-              <input
-                value={q}
-                onChange={e => setQ(e.target.value)}
-                placeholder="Buscar por N.° Exp, solicitante o asunto…"
-              />
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <div className="search-mini">
+                <Search size={15} />
+                <input
+                  value={q}
+                  onChange={e => setQ(e.target.value)}
+                  placeholder="Buscar por N.° Exp, solicitante o asunto…"
+                />
+              </div>
+              <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} title="Desde" style={{ fontSize: 12, height: 34 }} />
+              <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} title="Hasta" style={{ fontSize: 12, height: 34 }} />
+              {(dateFrom || dateTo) && (
+                <button className="btn ghost" style={{ fontSize: 11, padding: '4px 8px', height: 34 }} onClick={() => { setDateFrom(''); setDateTo('') }}>
+                  Limpiar fechas
+                </button>
+              )}
             </div>
           }
         >
@@ -115,7 +147,10 @@ export default function BookAuditView({ items }) {
                 </tr>
               </thead>
               <tbody>
-                {rows.map(x => (
+                {pageRows.length === 0 && (
+                  <tr><td colSpan={12} style={{ textAlign: 'center', padding: 24, color: 'var(--arib-navy-light)', fontSize: 13 }}>Ningún expediente coincide con la búsqueda o el rango de fechas.</td></tr>
+                )}
+                {pageRows.map(x => (
                   <tr
                     key={x.id}
                     className={selected?.id === x.id ? 'selected' : ''}
@@ -182,6 +217,19 @@ export default function BookAuditView({ items }) {
               </tbody>
             </table>
           </div>
+          {rows.length > PAGE_SIZE && (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 10, marginTop: 12 }}>
+              <span style={{ fontSize: 12, color: 'var(--arib-navy-light)' }}>
+                Página {page} de {totalPages} · {rows.length} expediente(s)
+              </span>
+              <button className="btn ghost" style={{ padding: '4px 8px', height: 30 }} disabled={page <= 1} onClick={() => setPage(p => p - 1)}>
+                <ChevronLeft size={14} />
+              </button>
+              <button className="btn ghost" style={{ padding: '4px 8px', height: 30 }} disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}>
+                <ChevronRight size={14} />
+              </button>
+            </div>
+          )}
         </Panel>
 
         {/* Right: Selected Case Audit Details */}

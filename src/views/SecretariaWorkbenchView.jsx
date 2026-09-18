@@ -1,8 +1,9 @@
 import React,{useMemo,useState} from 'react'
-import { Inbox, Search, Plus, ArrowRight, CheckCircle2, FileText, Clock3, ExternalLink, Send, ShieldAlert, ArrowUpRight, CheckCheck } from 'lucide-react'
+import { Inbox, Search, Plus, ArrowRight, CheckCircle2, FileText, Clock3, ExternalLink, Send, ShieldAlert, ArrowUpRight, CheckCheck, UploadCloud, Trash2 } from 'lucide-react'
 import { Panel, StatusBadge, SlaBadge, Badge, Empty, RouteStrip, Timeline, FileList, Modal, Field } from '../components/ui'
 import CargoModal from '../components/CargoModal'
 import { PROGRAMS, CONDITIONS, procedureById } from '../data/catalogs'
+import { fileToCompressedDataUrl } from '../utils/imageUpload'
 
 const physicalBase={
   procedureId:'const_biblioteca',
@@ -26,6 +27,26 @@ export default function SecretariaWorkbenchView({items,procedures,permissions=[]
   const [modal,setModal]=useState(false)
   const [form,setForm]=useState(physicalBase)
   const [cargoExp,setCargoExp]=useState(null)
+  const [attLinkUrl,setAttLinkUrl]=useState('')
+  const [attBusy,setAttBusy]=useState(false)
+  const [attError,setAttError]=useState('')
+
+  const chooseAttFile=async e=>{
+    const file=e.target.files?.[0]
+    if(!file)return
+    setAttError('');setAttBusy(true)
+    try{
+      const dataUrl=await fileToCompressedDataUrl(file)
+      setForm(f=>({...f,adjuntos:[...f.adjuntos,{name:file.name,size:'Escaneado en ventanilla',url:dataUrl}]}))
+    }catch(err){setAttError(err.message)}
+    finally{setAttBusy(false);e.target.value=''}
+  }
+  const addAttLink=()=>{
+    if(!attLinkUrl.trim())return
+    setForm(f=>({...f,adjuntos:[...f.adjuntos,{name:'Documento adjunto',size:'Google Drive',url:attLinkUrl.trim()}]}))
+    setAttLinkUrl('')
+  }
+  const removeAtt=idx=>setForm(f=>({...f,adjuntos:f.adjuntos.filter((_,i)=>i!==idx)}))
 
   const source=useMemo(()=>
     items
@@ -51,6 +72,7 @@ export default function SecretariaWorkbenchView({items,procedures,permissions=[]
     })
     setModal(false)
     setForm(physicalBase)
+    setAttLinkUrl('');setAttError('')
     if(exp) setCargoExp(exp)
   }
 
@@ -316,6 +338,37 @@ export default function SecretariaWorkbenchView({items,procedures,permissions=[]
 
         <Field label="Fundamento / Resumen del pedido">
           <textarea rows="4" value={form.fundamento} onChange={e=>setForm({...form,fundamento:e.target.value})} placeholder="Resumen del documento ingresado por ventanilla…"/>
+        </Field>
+
+        <Field
+          label="Documentos y anexos presentados por el usuario (opcional)"
+          hint="Escanea o fotografía los documentos físicos entregados en ventanilla, o pega un enlace de Google Drive si ya están digitalizados."
+        >
+          <label className="dropzone" style={{padding:12}}>
+            <UploadCloud size={20}/>
+            <b>{attBusy?'Procesando archivo…':'Subir foto o escaneo del documento'}</b>
+            <span>Formatos: JPG, PNG o PDF · Máximo 15 MB</span>
+            <input type="file" accept="image/*,.pdf" disabled={attBusy} onChange={chooseAttFile}/>
+          </label>
+          {attError && <div className="login-error">{attError}</div>}
+          <div style={{display:'flex',gap:8,marginTop:10}}>
+            <input value={attLinkUrl} onChange={e=>setAttLinkUrl(e.target.value)} placeholder="o pega un enlace de Google Drive"/>
+            <button type="button" className="btn soft" onClick={addAttLink} disabled={!attLinkUrl.trim()}>
+              <Plus size={14}/> Agregar
+            </button>
+          </div>
+          {form.adjuntos.length>0 && (
+            <div style={{marginTop:10,display:'grid',gap:6}}>
+              {form.adjuntos.map((a,i)=>(
+                <div key={i} style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,fontSize:12,background:'var(--arib-surface-subtle)',borderRadius:8,padding:'6px 10px'}}>
+                  <span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{a.name}</span>
+                  <button type="button" className="btn ghost" title="Quitar" onClick={()=>removeAtt(i)}>
+                    <Trash2 size={13}/>
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </Field>
 
         <div className="form-note">

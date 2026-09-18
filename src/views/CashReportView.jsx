@@ -1,12 +1,25 @@
 import React, { useMemo, useState } from 'react'
-import { Wallet, Search, Download, Receipt, Landmark, AlertTriangle, ListChecks, ExternalLink } from 'lucide-react'
-import { Kpi, Panel, Badge, Empty } from '../components/ui'
+import { Wallet, Search, Download, Receipt, Landmark, AlertTriangle, ListChecks, ExternalLink, Pencil, History } from 'lucide-react'
+import { Kpi, Panel, Badge, Empty, Field, Modal } from '../components/ui'
 import { procedureById } from '../data/catalogs'
 import ReciboPagoModal from '../components/ReciboPagoModal'
 
-export default function CashReportView({ items }) {
+export default function CashReportView({ items, permissions = [], onEditPayment }) {
+  const can = perm => permissions.includes(perm)
   const [q, setQ] = useState('')
   const [reciboExp, setReciboExp] = useState(null)
+  const [editExp, setEditExp] = useState(null)
+  const [editMonto, setEditMonto] = useState('')
+  const [editErr, setEditErr] = useState('')
+
+  const openEdit = exp => { setEditExp(exp); setEditMonto(String(exp.pago.monto)); setEditErr('') }
+  const closeEdit = () => { setEditExp(null); setEditErr('') }
+  const submitEdit = () => {
+    if (!(Number(editMonto) > 0)) { setEditErr('Ingresa el monto corregido.'); return }
+    if (Number(editMonto) === Number(editExp.pago.monto)) { setEditErr('El monto corregido debe ser distinto al monto registrado.'); return }
+    const result = onEditPayment(editExp, { monto: editMonto })
+    if (result) closeEdit()
+  }
 
   const payments = useMemo(() =>
     items
@@ -133,6 +146,7 @@ export default function CashReportView({ items }) {
                   <th>Fecha</th>
                   <th style={{ textAlign: 'right' }}>Evidencia</th>
                   <th style={{ textAlign: 'right' }}>Recibo</th>
+                  {can('case.pay_edit') && <th style={{ textAlign: 'right' }}>Corrección</th>}
                 </tr>
               </thead>
               <tbody>
@@ -141,7 +155,15 @@ export default function CashReportView({ items }) {
                     <td><b style={{ color: 'var(--arib-primary)' }}>EXP {exp.numero}</b></td>
                     <td style={{ fontSize: 12 }}>{proc?.name || '—'}</td>
                     <td style={{ fontSize: 12 }}>{exp.solicitante}</td>
-                    <td><b style={{ color: '#16a34a' }}>S/ {Number(pago.monto).toFixed(2)}</b></td>
+                    <td>
+                      <b style={{ color: '#16a34a' }}>S/ {Number(pago.monto).toFixed(2)}</b>
+                      {pago.editadoAt && (
+                        <div title={`Corregido por ${pago.editadoPor || 'Administrador'}`} style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 2 }}>
+                          <History size={11} color="#b45309" />
+                          <span style={{ fontSize: 10, color: '#b45309' }}>Corregido</span>
+                        </div>
+                      )}
+                    </td>
                     <td style={{ fontSize: 12 }}>{pago.metodo}</td>
                     <td style={{ fontSize: 12 }}>{pago.voucher}</td>
                     <td style={{ fontSize: 12 }}>{pago.fecha}</td>
@@ -159,10 +181,17 @@ export default function CashReportView({ items }) {
                         <Receipt size={14} />
                       </button>
                     </td>
+                    {can('case.pay_edit') && (
+                      <td style={{ textAlign: 'right' }}>
+                        <button className="btn ghost" title="Corregir monto (solo Administrador)" onClick={() => openEdit(exp)}>
+                          <Pencil size={14} />
+                        </button>
+                      </td>
+                    )}
                   </tr>
                 )) : (
                   <tr>
-                    <td colSpan={9}>
+                    <td colSpan={can('case.pay_edit') ? 10 : 9}>
                       <Empty title="Sin pagos registrados" text="Aún no se ha registrado ningún pago de derecho de trámite en Tesorería." />
                     </td>
                   </tr>
@@ -219,6 +248,31 @@ export default function CashReportView({ items }) {
       </div>
 
       <ReciboPagoModal exp={reciboExp} onClose={() => setReciboExp(null)} />
+
+      <Modal
+        open={!!editExp}
+        onClose={closeEdit}
+        title="Corregir monto del pago"
+        subtitle={editExp ? `EXP ${editExp.numero} · ${editExp.solicitante}. Solo el Administrador puede realizar esta corrección, como control adicional.` : ''}
+        footer={
+          <>
+            <button className="btn" onClick={closeEdit}>Cancelar</button>
+            <button className="btn primary" onClick={submitEdit}>Guardar corrección</button>
+          </>
+        }
+      >
+        {editExp && (
+          <>
+            <Field label="Monto registrado originalmente">
+              <input value={`S/ ${Number(editExp.pago.monto).toFixed(2)}`} disabled />
+            </Field>
+            <Field label="Monto corregido (S/)" required>
+              <input type="number" min="0.01" step="0.01" value={editMonto} onChange={e => setEditMonto(e.target.value)} autoFocus />
+            </Field>
+            {editErr && <p style={{ color: '#dc2626', fontSize: 12, margin: '4px 0 0' }}>{editErr}</p>}
+          </>
+        )}
+      </Modal>
     </div>
   )
 }
