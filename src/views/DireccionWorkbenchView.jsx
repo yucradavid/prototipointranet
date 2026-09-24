@@ -1,7 +1,7 @@
 import React,{useMemo,useState} from 'react'
 import { Search, Stamp, Route, Plus, X, ArrowRight, ShieldCheck, Clock3, Sparkles, CheckCircle2, ChevronRight, FileCheck } from 'lucide-react'
 import { Panel, StatusBadge, SlaBadge, Badge, Empty, RouteStrip, Timeline, FileList } from '../components/ui'
-import { officeName, procedureById } from '../data/catalogs'
+import { officeName, procedureById, procedureForExpediente } from '../data/catalogs'
 
 export default function DireccionWorkbenchView({items,workflows,offices,permissions=[],onProveido}){
   const can=perm=>permissions.includes(perm)
@@ -21,7 +21,7 @@ export default function DireccionWorkbenchView({items,workflows,offices,permissi
   React.useEffect(()=>{
     if(selected){
       const cfg=workflows[selected.procedureId]
-      const defaultRoute=[...(cfg?.route||procedureById(selected.procedureId)?.route||[])]
+      const defaultRoute=[...(cfg?.route||procedureForExpediente(selected)?.route||[])]
       setCustomRoute(defaultRoute)
       const firstOffice=defaultRoute[0] ? officeName(defaultRoute[0]).toUpperCase() : 'LA OFICINA CORRESPONDIENTE'
       setProveido(`PASE A ${firstOffice} Y CONTINÚE SEGÚN RUTA PARA SU ATENCIÓN Y TRÁMITE DE LEY.`)
@@ -212,19 +212,32 @@ export default function DireccionWorkbenchView({items,workflows,offices,permissi
                     <option value="" disabled>+ Agregar oficina adicional al recorrido…</option>
                     {offices
                       .filter(x=>!['mesa_partes','direccion'].includes(x.id)&&!customRoute.includes(x.id))
-                      .map(o=><option key={o.id} value={o.id}>{o.name}</option>)}
+                      .map(o=><option key={o.id} value={o.id}>{o.provisional ? `⚠ ${o.name} (provisional)` : o.name}</option>)}
                   </select>
                 </div>
               )}
 
-              {procedureById(selected.procedureId)?.monto>0 && !customRoute.includes('tesoreria') && (
+              {procedureForExpediente(selected)?.monto>0 && !customRoute.includes('tesoreria') && (
                 <div className="rule-banner" style={{marginTop:8}}>
                   <Route size={20} color="var(--arib-warning, #f59e0b)" style={{flex:'none'}}/>
                   <div>
                     <b>Ruta sin paso de Tesorería</b>
                     <span>
-                      Este trámite tiene un costo de S/ {Number(procedureById(selected.procedureId)?.monto).toFixed(2)}, pero la ruta que estás por firmar no incluye Tesorería —
+                      Este trámite tiene un costo de S/ {Number(procedureForExpediente(selected)?.monto).toFixed(2)}, pero la ruta que estás por firmar no incluye Tesorería —
                       nadie va a validar el pago. Si es intencional (ej. ya se cobró fuera del sistema), puedes continuar; si no, agrega Tesorería a la ruta.
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {customRoute.some(id=>offices.find(o=>o.id===id)?.provisional) && (
+                <div className="rule-banner" style={{marginTop:8}}>
+                  <Route size={20} color="var(--arib-warning, #f59e0b)" style={{flex:'none'}}/>
+                  <div>
+                    <b>Ruta con oficina(s) provisional(es)</b>
+                    <span>
+                      La ruta incluye {customRoute.filter(id=>offices.find(o=>o.id===id)?.provisional).map(id=>offices.find(o=>o.id===id)?.name||id).join(', ')}.
+                      Estas dependencias no han sido confirmadas institucionalmente. Verifica con el ingeniero antes de firmar el proveído.
                     </span>
                   </div>
                 </div>

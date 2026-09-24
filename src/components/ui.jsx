@@ -1,8 +1,107 @@
 import React from 'react'
-import { X, CheckCircle2, AlertTriangle, Info, Clock3, FileText, ChevronRight, Circle, ExternalLink, HardDrive, Wallet, Receipt, ShieldCheck } from 'lucide-react'
+import { X, CheckCircle2, AlertTriangle, Info, Clock3, FileText, ChevronRight, Circle, ExternalLink, HardDrive, Wallet, Receipt, ShieldCheck, FileCheck, FormInput, Lock } from 'lucide-react'
 import { statusLabel, statusTone } from '../models/expediente'
-import { officeName, procedureById, PAYMENT_INFO } from '../data/catalogs'
+import { officeName, procedureById, procedureForExpediente, PAYMENT_INFO } from '../data/catalogs'
 import { routeProgress, slaInfo, requiresPayment } from '../workflowEngine'
+import { getRequirementsArray } from '../models/procedure.js'
+
+// ─── RequirementsBlock ────────────────────────────────────────────────────────
+// Muestra los requisitos estructurados del trámite junto a los adjuntos reales
+// del expediente para que la oficina pueda verificar cada uno.
+export function RequirementsBlock({ exp }) {
+  const proc = exp && procedureForExpediente(exp)
+  const reqs = proc ? getRequirementsArray(proc) : []
+  if (!reqs.length) return null
+
+  const adjuntos = exp?.adjuntos || []
+
+  // Intenta emparejar un requisito con un adjunto por similaridad de nombre
+  const findAttachment = label => {
+    const norm = s => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+    const key = norm(label)
+    return adjuntos.find(a => {
+      const aName = norm(a.name)
+      // Coincidencia directa o si la clave está contenida en el nombre del adjunto
+      return aName.includes(key.slice(0, 12)) || key.includes(aName.slice(0, 12))
+    })
+  }
+
+  const typeIcon = type => {
+    if (type === 'form')      return <FormInput size={13} style={{ color: '#0369a1' }} />
+    if (type === 'payment')   return <Wallet size={13} style={{ color: '#b45309' }} />
+    if (type === 'condition') return <Lock size={13} style={{ color: '#7c3aed' }} />
+    return <FileText size={13} style={{ color: '#15803d' }} />
+  }
+
+  const typeLabel = type => {
+    if (type === 'form')      return 'Formulario'
+    if (type === 'payment')   return 'Pago'
+    if (type === 'condition') return 'Condición interna'
+    return 'Documento'
+  }
+
+  const typeColor = type => {
+    if (type === 'form')      return '#e0f2fe'
+    if (type === 'payment')   return '#fef3c7'
+    if (type === 'condition') return '#ede9fe'
+    return '#f0fdf4'
+  }
+
+  return (
+    <div style={{ marginBottom: 16 }}>
+      <h4 style={{ fontSize: 13, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--arib-navy-light)', marginBottom: 8 }}>
+        Requisitos del trámite
+      </h4>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {reqs.map((r, i) => {
+          const att = r.type !== 'form' && r.type !== 'condition' ? findAttachment(r.label) : null
+          const isConditional = r.required === 'conditional'
+          return (
+            <div key={i} style={{
+              display: 'flex', alignItems: 'flex-start', gap: 8,
+              background: 'var(--arib-surface-subtle)', border: '1px solid var(--arib-border)',
+              borderRadius: 8, padding: '7px 10px',
+              opacity: isConditional ? 0.8 : 1
+            }}>
+              <span style={{
+                display: 'inline-flex', alignItems: 'center', gap: 3,
+                fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 4,
+                background: typeColor(r.type), flexShrink: 0, marginTop: 1
+              }}>
+                {typeIcon(r.type)}
+                {typeLabel(r.type)}
+                {isConditional && ' ·  Condicional'}
+              </span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <span style={{ fontSize: 12, color: 'var(--arib-navy)', fontWeight: 600 }}>{r.label}</span>
+                {r.note && <span style={{ display: 'block', fontSize: 11, color: '#94a3b8', fontStyle: 'italic' }}>{r.note}</span>}
+                {isConditional && <small style={{display:'block'}}>{exp.requirementResponses?.find(x=>x.label===r.label)?.applies===false ? 'El solicitante declaró que no aplica a su caso.' : exp.requirementResponses?.find(x=>x.label===r.label)?.applies===true ? 'El solicitante declaró que sí aplica a su caso.' : 'Aplicabilidad pendiente de revisión.'}</small>}
+                {att && (
+                  <div style={{ marginTop: 3, display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <CheckCircle2 size={11} style={{ color: '#16a34a', flexShrink: 0 }} />
+                    {att.url ? (
+                      <a href={att.url} target="_blank" rel="noreferrer"
+                        style={{ fontSize: 11, color: '#0284c7', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                        {att.name} <ExternalLink size={10} />
+                      </a>
+                    ) : (
+                      <span style={{ fontSize: 11, color: '#16a34a' }}>{att.name}</span>
+                    )}
+                  </div>
+                )}
+                {!att && r.type === 'document' && (
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#94a3b8', marginTop: 3 }}>
+                    <AlertTriangle size={10} /> Sin adjunto identificado
+                  </span>
+                )}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
 
 export function Badge({children,tone='neutral'}){
   return <span className={`badge ${tone}`}>{children}</span>
@@ -17,14 +116,36 @@ export function SlaBadge({exp}){
   const info=exp&&slaInfo(exp)
   if(!info||info.closed) return null
   if(info.paused) return <Badge tone="info"><Clock3 size={12}/> SLA pausado</Badge>
-  if(info.overdue) return <Badge tone="danger"><Clock3 size={12}/> Vencido {Math.abs(info.daysLeft)}d</Badge>
-  if(info.daysLeft<=1) return <Badge tone="warning"><Clock3 size={12}/> Vence hoy</Badge>
+  if(info.overdue) return <Badge tone="danger"><Clock3 size={12}/> Vencido {Math.abs(info.daysLeft)>0 ? `${Math.abs(info.daysLeft)}d` : '(plazo cumplido)'}</Badge>
+  if(info.daysLeft===0) return <Badge tone="warning"><Clock3 size={12}/> Vence hoy</Badge>
   return <Badge tone="neutral"><Clock3 size={12}/> Vence en {info.daysLeft}d</Badge>
 }
 
 export function PaymentStatusCard({exp,onViewReceipt}){
-  const proc=exp&&procedureById(exp.procedureId)
-  if(!proc?.monto) return null
+  const proc=exp&&procedureForExpediente(exp)
+  // Tarifa pendiente: mostrar aviso informativo sin asumir gratuidad
+  if(proc?.tariffStatus==='pending') return (
+    <div className="payment-status-card pending" style={{background:'#fef9c3',borderColor:'#fde047'}}>
+      <AlertTriangle size={22} style={{flex:'none',color:'#b45309'}}/>
+      <div>
+        <b style={{color:'#92400e'}}>Tarifa pendiente de definición</b>
+        <p style={{color:'#78350f'}}>
+          No se ha confirmado el costo de este trámite. No significa que sea gratuito.
+          El Administrador debe configurar la tarifa antes de que nuevas solicitudes puedan procesarse.
+        </p>
+      </div>
+    </div>
+  )
+  if(!proc?.monto&&proc?.tariffStatus!=='fixed') return null
+  if((proc?.monto||0)===0) return (
+    <div className="payment-status-card free" style={{background:'#f0fdf4',borderColor:'#86efac'}}>
+      <ShieldCheck size={22} style={{flex:'none',color:'#16a34a'}}/>
+      <div>
+        <b style={{color:'#166534'}}>Trámite sin costo</b>
+        <p style={{color:'#15803d'}}>Este trámite es gratuito, no requiere comprobante de pago.</p>
+      </div>
+    </div>
+  )
   const isPaid=exp.pago?.estado==='PAGADO'
   return (
     <div className={`payment-status-card ${isPaid?'paid':'pending'}`}>
@@ -210,14 +331,20 @@ export function RouteStrip({exp,compact=false}){
 }
 
 export function FileList({files=[]}){
+  const getIcon = f => {
+    const name = String(f.name || '').toLowerCase()
+    if (/pago|comprobante|voucher|recibo|yape|plin/i.test(name)) return <Wallet size={18} color="#b45309"/>
+    if (/fut|formulario/i.test(name)) return <FileCheck size={18} color="#0369a1"/>
+    const isDrive = !!f.url || (f.size && f.size.includes('Drive'))
+    return isDrive ? <HardDrive size={18} color="#0284c7"/> : <FileText size={18} color="#64748b"/>
+  }
   return (
     <div className="file-list">
       {files.length ? (
         files.map((f,i)=>{
-          const isDrive = !!f.url || (f.size && f.size.includes('Drive'))
           return (
             <div className="file-row" key={`${f.name}-${i}`}>
-              {isDrive ? <HardDrive size={18} color="#0284c7"/> : <FileText size={18} color="#64748b"/>}
+              {getIcon(f)}
               <div>
                 {f.url ? (
                   <a href={f.url} target="_blank" rel="noreferrer" style={{display:'inline-flex',alignItems:'center',gap:4}}>

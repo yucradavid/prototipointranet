@@ -2,7 +2,7 @@
 
 Este documento es para el desarrollador de **Backend**. Hay una versión hermana para Frontend en [`HANDOFF_FRONTEND.md`](HANDOFF_FRONTEND.md) — el **contrato de API** (sección 6) es el punto de contacto entre ambos documentos y debe mantenerse igual en los dos. Este documento cubre **Sprint 1** (verificación de pago manual, tal como está hoy el prototipo); la verificación **automática** contra una pasarela real es **Sprint 2**, documentado aparte en [`SPRINT2_PASARELA_PAGOS.md`](SPRINT2_PASARELA_PAGOS.md).
 
-> El prototipo de este repositorio (React + `localStorage`, sin backend) no es el Sprint 1 recortado: es la **especificación viva y ya probada** del comportamiento que ustedes deben reproducir con datos reales. No rediseñen las reglas de negocio desde cero — pórtenlas. Todo lo que hoy es una función en `src/workflowEngine.js` ya está pensado y probado (`tests/workflow.test.mjs`, 15 casos).
+> El prototipo de este repositorio (React + `localStorage`, sin backend) no es el Sprint 1 recortado: es la **especificación viva y ya probada** del comportamiento que ustedes deben reproducir con datos reales. No rediseñen las reglas de negocio desde cero — pórtenlas. Todo lo que hoy es una función en `src/workflowEngine.js` ya está pensado y probado (`tests/workflow.test.mjs` + `tests/catalog-regression.test.mjs`, 26 casos).
 
 ---
 
@@ -109,6 +109,8 @@ create table offices (
   name varchar(120) not null,
   short_code varchar(10) not null,
   color varchar(10),
+  provisional boolean not null default false,  -- oficina aún no confirmada por la institución (ej. Fedatario)
+  correspondence_note text,                     -- nota de correspondencia con el TUSNE mientras es provisional
   created_at timestamp, updated_at timestamp
 );
 
@@ -116,9 +118,15 @@ create table procedures (
   id bigserial primary key,
   name varchar(150) not null,
   category varchar(80),
-  requires_text varchar(255),
+  requires_text varchar(255),                   -- legado: texto libre pre-migración, se conserva de solo lectura
+  requirements_list jsonb not null default '[]', -- [{label, type: 'form'|'document'|'payment'|'condition', required: true|false|'conditional', note?}]
   sla_dias int not null,
-  monto numeric(10,2) not null default 0,
+  monto numeric(10,2),                           -- NULL cuando tariff_status = 'pending' (no confundir con gratuito)
+  tariff_status varchar(20) not null default 'pending', -- 'pending' | 'free' | 'fixed'
+  active boolean not null default true,          -- false = no acepta nuevas solicitudes, pero expedientes existentes siguen su curso
+  source varchar(255),                           -- documento/fila de origen (ej. "TUSNE 2026 · fila 81")
+  valid_from date,
+  verification_status varchar(20) not null default 'pending', -- 'pending' | 'confirmed'
   created_at timestamp, updated_at timestamp
 );
 
@@ -145,6 +153,7 @@ create table expedientes (
   canal varchar(20) not null,             -- 'Virtual' | 'Físico'
   tipo_documento varchar(20) not null,
   procedure_id bigint not null references procedures(id),
+  procedure_snapshot jsonb not null,      -- copia congelada de tarifa/requisitos/SLA al momento del registro (ver más abajo)
   solicitante varchar(150) not null, condicion varchar(40), programa varchar(150),
   dni varchar(20), celular varchar(20), correo varchar(120), direccion varchar(255),
   asunto varchar(255), fundamento text, numero_folios int default 1,
@@ -184,6 +193,8 @@ create table expediente_adjuntos (
 
 `route_plan` queda como `jsonb` (es solo una lista ordenada de IDs, no necesita tabla propia). `historial` y `adjuntos` sí conviene normalizarlos en tablas propias — en el prototipo viven embebidos como arrays porque todo es un blob de `localStorage`, pero en Postgres eso les impediría auditar/paginar sin reescribir un JSON gigante en cada evento.
 
+**`procedure_snapshot` no es opcional.** Es la regla que garantiza que cambiar una tarifa o un requisito en el catálogo (`procedures`) **nunca** altera expedientes ya registrados — el expediente conserva su propia copia congelada de `{ monto, tariffStatus, requirementsList, sla_dias, name, source }` tomada al momento de `POST /api/expedientes/virtual` o `/fisico` (ver `captureProcedure` en `src/models/procedure.js`). Toda lectura posterior de tarifa/requisitos/SLA de un expediente (recibo, checklist, cómputo de SLA) debe leer `procedure_snapshot`, nunca hacer join en vivo contra `procedures`. Si el expediente es anterior a la existencia del snapshot (dato legado sin catálogo histórico), reconstruir uno con `snapshotOrigin: 'legacy_missing_catalog'` en vez de inventar una tarifa — no hay forma de recuperar automáticamente un dato que una versión anterior ya perdió.
+
 ## 6. Contrato de API a exponer
 
 Este contrato debe coincidir con lo que consume Frontend (ver su documento). Si cambian algo acá, avísenles.
@@ -199,7 +210,7 @@ PUT    /api/offices/{id}                  (admin)
 DELETE /api/offices/{id}                  (admin, valida canDeleteOffice)
 
 GET    /api/procedures
-POST   /api/procedures                    (admin)  { name, category, requires, sla, monto, route[] }
+POST   /api/procedures                    (admin)  { name, category, requirementsList[], sla, tariffStatus, monto, active, source, validFrom, route[] }
 PUT    /api/procedures/{id}
 DELETE /api/procedures/{id}               (admin, valida canDeleteProcedure)
 POST   /api/procedures/{id}/publish-route (admin/direccion)  { route[] } -> nueva workflow_config version
@@ -259,8 +270,9 @@ Cada endpoint de acción sobre expediente debe: verificar el permiso del usuario
 | Archivo | Para qué sirve mirarlo |
 |---|---|
 | `src/workflowEngine.js` | Todas las reglas de negocio puras, con sus mensajes de error exactos |
-| `tests/workflow.test.mjs` | 15 casos de prueba — la especificación de comportamiento más confiable que existe |
-| `src/data/catalogs.js` | Catálogo maestro de oficinas, trámites (con `monto`), roles, vistas y permisos posibles |
+| `src/models/procedure.js` | Normalización del trámite, requisitos estructurados (`requirementsList`), `canRequestProcedure` y el snapshot inmutable (`captureProcedure`/`preserveProcedureTerms`) — reprodúzcanlo tal cual, es la parte más nueva y más fácil de romper por accidente |
+| `tests/workflow.test.mjs` + `tests/catalog-regression.test.mjs` | 26 casos de prueba — la especificación de comportamiento más confiable que existe |
+| `src/data/catalogs.js` | Catálogo maestro de oficinas (incl. provisionales), ~38 trámites del TUSNE 2026 con requisitos estructurados y estado de tarifa, roles, vistas y permisos posibles |
 | `src/data/seed.js` | Datos de ejemplo — sirven directamente como fixtures/seeders de Laravel |
 | `src/repositories/prototypeRepository.js` | Qué se persiste hoy y con qué forma — mapea casi 1 a 1 a qué tablas hacen falta |
 

@@ -1,6 +1,7 @@
+import { requirementSatisfied, requirementIncluded, canRequestProcedure, getApplicantRequirements } from '../models/procedure.js'
 import React,{useEffect,useMemo,useState} from 'react'
 import { Plus, Search, FileText, UploadCloud, Send, AlertTriangle, Download, CheckCircle2, Paperclip, X, Clock3, Filter, Sparkles, HelpCircle, HardDrive, Check, Wallet } from 'lucide-react'
-import { Panel, Badge, StatusBadge, SlaBadge, PaymentStatusCard, Modal, Field, Empty, RouteStrip, Timeline, FileList } from '../components/ui'
+import { Panel, Badge, StatusBadge, SlaBadge, PaymentStatusCard, Modal, Field, Empty, RouteStrip, Timeline, FileList, RequirementsBlock } from '../components/ui'
 import CargoModal from '../components/CargoModal'
 import ReciboPagoModal from '../components/ReciboPagoModal'
 import { PROGRAMS, CONDITIONS, procedureById, officeName, PAYMENT_INFO } from '../data/catalogs'
@@ -21,7 +22,10 @@ const defaultForm={
   adjuntos:[]
 }
 
-const requirementLabels=procedureId=>(procedureById(procedureId)?.requires||'').split('+').map(s=>s.trim()).filter(Boolean)
+const requirementLabels = procedureId => {
+  const proc = procedureById(procedureId)
+  return getApplicantRequirements(proc)
+}
 
 export default function ApplicantPortalView({profileId,items,procedures,currentUser,permissions=[],onCreateVirtual,onCorrect}){
   const can=perm=>permissions.includes(perm)
@@ -49,7 +53,15 @@ export default function ApplicantPortalView({profileId,items,procedures,currentU
   const [reciboExp,setReciboExp]=useState(null)
 
   useEffect(()=>{
-    setChecklist(requirementLabels(form.procedureId).map(label=>({label,checked:false,url:''})))
+    setChecklist(requirementLabels(form.procedureId).map(req=>({
+      label: req.label,
+      type: req.type,
+      required: req.required,
+      note: req.note || '',
+      applies:null,
+      checked:false,
+      url:''
+    })))
     setPaymentEvidenceUrl('')
     setPaymentFileName('')
     setPaymentFileError('')
@@ -107,12 +119,13 @@ export default function ApplicantPortalView({profileId,items,procedures,currentU
 
   const submit=()=>{
     const p=procedureById(form.procedureId)
+    if(!canRequestProcedure(p)) { setFormError('Selecciona un trámite disponible con tarifa definida.'); return }
     if(!form.fundamento.trim()){
       setFormError('Completa el fundamento o motivo de tu solicitud.')
       return
     }
-    if(!checklist.every(c=>c.checked&&c.url.trim())){
-      setFormError('Marca y adjunta el enlace de Google Drive de todos los requisitos requeridos para este trámite.')
+    if(!checklist.every(requirementSatisfied)){
+      setFormError('Completa los requisitos obligatorios e indica si los condicionales aplican. Adjunta los documentos que correspondan.')
       return
     }
     if(p.monto>0&&!paymentEvidenceUrl.trim()){
@@ -120,17 +133,21 @@ export default function ApplicantPortalView({profileId,items,procedures,currentU
       return
     }
     const driveItems=[
-      ...checklist.map(c=>({name:c.label,size:'Google Drive',url:c.url.trim()})),
+      ...checklist
+        .filter(requirementIncluded)
+        .map(c=>({name:c.label,size:'Google Drive',url:c.url.trim()})),
       ...extraLinks.filter(l=>l.url.trim()).map(l=>({name:l.label.trim()||'Documento adicional',size:'Google Drive',url:l.url.trim()})),
       ...(p.monto>0?[{name:'Comprobante de pago',size:isDataUrl(paymentEvidenceUrl)?(paymentFileName||'Archivo adjunto'):'Google Drive',url:paymentEvidenceUrl.trim()}]:[])
     ]
     const exp=onCreateVirtual({
       ...form,
       asunto:p.name,
+      requirementResponses:checklist.map(({label,required,applies,checked})=>({label,required,applies,checked})),
       adjuntos:[...form.adjuntos,...driveItems],
       ownerProfile:profileId,
       ownerUserId:currentUser?.id||null
     })
+    if(!exp) return
     setOpen(false)
     setForm(initialForm())
     setExtraLinks([])
@@ -162,7 +179,7 @@ export default function ApplicantPortalView({profileId,items,procedures,currentU
           <span className="eyebrow">PORTAL DIGITAL DEL {profileId==='docente'?'DOCENTE':'ESTUDIANTE'}</span>
           <h1>Mis Solicitudes y Trámites</h1>
           <p>
-            Presenta tu Formulario Único de Trámite (FUT), consulta el estado en tiempo real y descarga 
+            Presenta tu Formulario Único de Trámite (FUT), consulta el estado en tiempo real y descarga
             tus resoluciones o constancias sin desplazarte de oficina en oficina.
           </p>
         </div>
@@ -197,7 +214,7 @@ export default function ApplicantPortalView({profileId,items,procedures,currentU
           <div>
             <b>Tienes {obsCount} expediente{obsCount>1?'s':''} con observación pendiente</b>
             <span>
-              La oficina correspondiente requiere que subsanes la documentación. Al presionar "Subsanar ahora", 
+              La oficina correspondiente requiere que subsanes la documentación. Al presionar "Subsanar ahora",
               el expediente regresará automáticamente a la misma oficina para su atención inmediata.
             </span>
           </div>
@@ -206,29 +223,29 @@ export default function ApplicantPortalView({profileId,items,procedures,currentU
 
       {/* Filter Tabs */}
       <div className="filter-pills">
-        <button 
-          className={`filter-pill ${filter==='todos'?'active':''}`} 
+        <button
+          className={`filter-pill ${filter==='todos'?'active':''}`}
           onClick={()=>setFilter('todos')}
         >
           <span>Todos los expedientes</span>
           <i>{allMine.length}</i>
         </button>
-        <button 
-          className={`filter-pill ${filter==='proceso'?'active':''}`} 
+        <button
+          className={`filter-pill ${filter==='proceso'?'active':''}`}
           onClick={()=>setFilter('proceso')}
         >
           <span>En proceso</span>
           <i>{procCount}</i>
         </button>
-        <button 
-          className={`filter-pill ${filter==='observados'?'active':''}`} 
+        <button
+          className={`filter-pill ${filter==='observados'?'active':''}`}
           onClick={()=>setFilter('observados')}
         >
           <span>Por subsanar</span>
           <i>{obsCount}</i>
         </button>
-        <button 
-          className={`filter-pill ${filter==='finalizados'?'active':''}`} 
+        <button
+          className={`filter-pill ${filter==='finalizados'?'active':''}`}
           onClick={()=>setFilter('finalizados')}
         >
           <span>Finalizados</span>
@@ -238,8 +255,8 @@ export default function ApplicantPortalView({profileId,items,procedures,currentU
 
       {/* Master Detail Grid */}
       <div className="master-detail-grid">
-        <Panel 
-          title="Mis expedientes registrados" 
+        <Panel
+          title="Mis expedientes registrados"
           subtitle="Haz clic en cualquier solicitud para revisar su trazabilidad completa."
           actions={
             <div className="search-mini">
@@ -251,9 +268,9 @@ export default function ApplicantPortalView({profileId,items,procedures,currentU
           <div className="case-list">
             {mine.length ? (
               mine.map(x=>(
-                <button 
-                  key={x.id} 
-                  className={`case-item ${selected?.id===x.id?'active':''}`} 
+                <button
+                  key={x.id}
+                  className={`case-item ${selected?.id===x.id?'active':''}`}
                   onClick={()=>setSelectedId(x.id)}
                 >
                   <div className="case-icon">
@@ -271,16 +288,16 @@ export default function ApplicantPortalView({profileId,items,procedures,currentU
                 </button>
               ))
             ) : (
-              <Empty 
-                title="Sin solicitudes en esta sección" 
+              <Empty
+                title="Sin solicitudes en esta sección"
                 text="No hay solicitudes que coincidan con el filtro seleccionado. Utiliza el botón 'Nueva solicitud' para presentar un FUT."
               />
             )}
           </div>
         </Panel>
 
-        <Panel 
-          title={selected ? `${selected.numero ? `EXP ${selected.numero}` : selected.tracking} — ${selected.asunto}` : 'Detalle de la solicitud'} 
+        <Panel
+          title={selected ? `${selected.numero ? `EXP ${selected.numero}` : selected.tracking} — ${selected.asunto}` : 'Detalle de la solicitud'}
           subtitle={selected ? 'Seguimiento institucional y estado en vivo del expediente.' : 'Selecciona una solicitud del listado.'}
         >
           {selected ? (
@@ -320,7 +337,7 @@ export default function ApplicantPortalView({profileId,items,procedures,currentU
                     <span>{selected.respuesta}</span>
                   </div>
                   <button className="btn soft" onClick={()=>downloadRespuesta(selected)}>
-                    <Download size={16}/> 
+                    <Download size={16}/>
                     <span>{selected.documentoRespuesta||'Descargar respuesta oficial'}</span>
                   </button>
                 </div>
@@ -370,6 +387,7 @@ export default function ApplicantPortalView({profileId,items,procedures,currentU
               {/* Archivos y Requisitos */}
               <h4>Documentos y enlaces adjuntos</h4>
               <FileList files={selected.adjuntos}/>
+              <RequirementsBlock exp={selected}/>
 
               {/* Historial de Trazabilidad */}
               <h4>Historial de movimientos y auditoría</h4>
@@ -382,12 +400,12 @@ export default function ApplicantPortalView({profileId,items,procedures,currentU
       </div>
 
       {/* Modal Nuevo FUT Virtual */}
-      <Modal 
-        open={open} 
-        onClose={()=>setOpen(false)} 
-        title="Nuevo Formulario Único de Trámite (FUT)" 
+      <Modal
+        open={open}
+        onClose={()=>setOpen(false)}
+        title="Nuevo Formulario Único de Trámite (FUT)"
         subtitle="Completa los datos de tu solicitud. El sistema generará tu N.° de expediente definitivo al enviar."
-        size="lg" 
+        size="lg"
         footer={
           <>
             <button className="btn ghost" onClick={()=>setOpen(false)}>Cancelar</button>
@@ -406,10 +424,11 @@ export default function ApplicantPortalView({profileId,items,procedures,currentU
         <div className="form-grid two">
           <Field label="Tipo de trámite requerido" required>
             <select value={form.procedureId} onChange={e=>{setForm({...form,procedureId:e.target.value});setFormError('')}}>
-              {procedures.map(p=><option key={p.id} value={p.id}>{p.name} (SLA: {p.sla} días{p.monto>0?` · S/ ${Number(p.monto).toFixed(2)}`:' · Gratuito'})</option>)}
+              <option value="">Selecciona un trámite disponible</option>
+              {procedures.filter(canRequestProcedure).map(p=><option key={p.id} value={p.id}>{p.name} (SLA: {p.sla} días{p.monto>0?` · S/ ${Number(p.monto).toFixed(2)}`:' · Gratuito'})</option>)}
             </select>
           </Field>
-          
+
           <Field label="Condición institucional">
             <select value={form.condicion} onChange={e=>setForm({...form,condicion:e.target.value})}>
               {CONDITIONS.map(x=><option key={x}>{x}</option>)}
@@ -459,28 +478,45 @@ export default function ApplicantPortalView({profileId,items,procedures,currentU
 
         {checklist.length > 0 && (
           <div className="requirement-checklist">
-            <h4>Requisitos obligatorios — marca cada casilla y pega el enlace compartido de Google Drive:</h4>
+            <h4>Requisitos del trámite — marca cada ítem y adjunta el documento cuando corresponda:</h4>
             {checklist.map((c,i)=>(
-              <div className="requirement-row" key={`${c.label}-${i}`}>
+              <div className={`requirement-row${c.required==='conditional'?' conditional':''}${c.type==='form'?' form-only':''}`} key={`${c.label}-${i}`}>
                 <label className="requirement-check">
-                  <input 
-                    type="checkbox" 
-                    checked={c.checked} 
+                  <input
+                    type="checkbox"
+                    disabled={c.required==='conditional' && c.applies!==true}
+                    checked={c.checked}
                     onChange={e=>{
                       setChecklist(cs=>cs.map((x,xi)=>xi===i?{...x,checked:e.target.checked}:x))
                       setFormError('')
                     }}
                   />
-                  <span>{c.label}</span>
+                  <span>
+                    {c.type==='form' && <span className="req-badge form" title="Dato del formulario">Formulario</span>}
+                    {c.type==='document' && <span className="req-badge doc" title="Documento a adjuntar">Documento</span>}
+                    {c.type==='condition' && <span className="req-badge cond" title="Condición interna">Condición</span>}
+                    {c.required==='conditional' && <span className="req-badge optional" title="Solo aplica en ciertos casos">Condicional</span>}
+                    {c.required===false && <span className="req-badge optional">Opcional</span>}
+                    {c.label}
+                    {c.note && <span className="req-note">{c.note}</span>}
+                  </span>
                 </label>
-                <input 
-                  placeholder="Enlace de Google Drive (acceso: cualquier persona con el enlace)" 
-                  value={c.url} 
-                  onChange={e=>{
-                    setChecklist(cs=>cs.map((x,xi)=>xi===i?{...x,url:e.target.value}:x))
-                    setFormError('')
-                  }}
-                />
+                {c.required==='conditional' && (
+                  <select aria-label={`Aplicabilidad: ${c.label}`} value={c.applies==null?'':String(c.applies)} onChange={e=>setChecklist(cs=>cs.map((x,xi)=>xi===i?{...x,applies:e.target.value===''?null:e.target.value==='true',checked:false,url:''}:x))}>
+                    <option value="">Indica si aplica a tu caso</option><option value="true">Sí aplica</option><option value="false">No aplica</option>
+                  </select>
+                )}
+                {c.type==='document' && (
+                  <input
+                    placeholder="Enlace de Google Drive (acceso: cualquier persona con el enlace)"
+                    disabled={c.required==='conditional' && c.applies!==true}
+                    value={c.url}
+                    onChange={e=>{
+                      setChecklist(cs=>cs.map((x,xi)=>xi===i?{...x,url:e.target.value}:x))
+                      setFormError('')
+                    }}
+                  />
+                )}
               </div>
             ))}
           </div>
@@ -488,14 +524,14 @@ export default function ApplicantPortalView({profileId,items,procedures,currentU
 
         {extraLinks.map((l,i)=>(
           <div className="requirement-row extra" key={`extra-${i}`}>
-            <input 
-              placeholder="Nombre del documento complementario" 
-              value={l.label} 
+            <input
+              placeholder="Nombre del documento complementario"
+              value={l.label}
               onChange={e=>setExtraLinks(ls=>ls.map((x,xi)=>xi===i?{...x,label:e.target.value}:x))}
             />
-            <input 
-              placeholder="Enlace de Google Drive" 
-              value={l.url} 
+            <input
+              placeholder="Enlace de Google Drive"
+              value={l.url}
               onChange={e=>setExtraLinks(ls=>ls.map((x,xi)=>xi===i?{...x,url:e.target.value}:x))}
             />
             <button type="button" className="btn ghost" onClick={()=>setExtraLinks(ls=>ls.filter((_,xi)=>xi!==i))} title="Quitar enlace">
@@ -505,13 +541,13 @@ export default function ApplicantPortalView({profileId,items,procedures,currentU
         ))}
 
         <div style={{display:'flex',gap:10,alignItems:'center',flexWrap:'wrap'}}>
-          <button 
-            type="button" 
-            className="btn soft" 
-            disabled={totalPlanned>=MAX_ATTACHMENTS} 
+          <button
+            type="button"
+            className="btn soft"
+            disabled={totalPlanned>=MAX_ATTACHMENTS}
             onClick={()=>setExtraLinks(ls=>[...ls,{label:'',url:''}])}
           >
-            <Plus size={14}/> 
+            <Plus size={14}/>
             <span>Agregar otro enlace de Google Drive ({totalPlanned}/{MAX_ATTACHMENTS})</span>
           </button>
         </div>

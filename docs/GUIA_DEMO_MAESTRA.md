@@ -1,73 +1,139 @@
 # Guía de demostración del prototipo maestro
 
-Script paso a paso para presentar el prototipo (ej. a "el ingeniero"). Actualizado para reflejar el flujo actual: login por oficina real, módulo de pagos/Caja, Roles y Permisos granulares, y auditoría administrativa.
+Actualizado: 2026-09-21. Refleja el flujo completo con catálogo TUSNE 2026, días hábiles, requisitos estructurados, pagos, feriados configurables y los grupos 1–4 incorporados.
+
+---
 
 ## 0. Pantalla de login
 
-- Mostrar que hay tres caminos de acceso: **Google institucional** (simulado), **usuario y contraseña**, y — solo para esta demo — **accesos directos**: perfiles genéricos (Estudiante, Docente, Secretaría, Dirección, Administrador) y **pestañas por oficina real** (Biblioteca, Jefatura Académica, Tesorería, EFSRT, Unidad Académica, Secretaría Académica), cada una con su propia cuenta.
-- Aclarar: en producción solo existiría Google/usuario-contraseña; los accesos directos son solo para que la demo no requiera escribir credenciales cada vez.
+- Tres caminos: **Google institucional** (simulado), **usuario y contraseña**, y accesos directos para la demo.
+- Accesos directos de oficina: Biblioteca, Jefatura Académica, Tesorería, EFSRT, Unidad Académica, Secretaría Académica — cada una con su propia cuenta real.
+- En producción solo existiría Google/usuario-contraseña; los accesos directos son solo para agilizar la demo.
 
-## 1. Administrador — panorama general
+---
+
+## 1. Administrador — panorama y configuración
 
 Entrar como **admin / admin123**.
 
-1. `Centro de control`: expedientes activos, ubicación actual de cada uno, carga de trabajo por oficina, y la matriz de Roles y Permisos (ya con etiquetas legibles, no claves técnicas).
-2. `Trámites y rutas`: seleccionar un trámite y mostrar que Mesa de Partes y Dirección están bloqueados en el diseñador. Arrastrar una oficina, conectarla y publicar una nueva versión de ruta.
-3. `Usuarios y catálogos` — recorrer las 5 pestañas:
-   - **Oficinas y Dependencias**: catálogo de las 6 oficinas reales + Mesa de Partes/Dirección.
-   - **Trámites**: incluye el campo de **costo** por trámite y el bloque de **Datos de pago institucional** (Yape, cuenta bancaria, CCI) que ve el solicitante al pagar.
-   - **Usuarios y Accesos**: las 6 cuentas de oficina, cambio/reseteo de contraseña, activar/desactivar.
-   - **Roles y Permisos**: mostrar que "Registrar pagos en Tesorería" es un permiso independiente de "Atender y completar pasos" — se puede quitar sin afectar lo demás.
-   - **Auditoría**: quién creó/editó/eliminó qué y cuándo (independiente del historial de cada expediente).
+### 1a. Centro de control
+- Expedientes activos con ubicación por oficina y carga de trabajo visual (barra por oficina).
+- KPIs clickeables: filtrar por "Fuera de SLA", "Por vencer", "Observados".
+- SLA ahora en **días hábiles** (excluye fines de semana y feriados del calendario).
+- Matriz RBAC: permisos legibles por rol, incluyendo `case.pay` separado de `case.attend`.
+
+### 1b. Trámites y diseñador de rutas
+- El catálogo ahora tiene **~40 trámites** de los grupos 1–4 del TUSNE 2026, más los heredados del prototipo.
+- Cada trámite muestra: fuente (ej. "TUSNE 2026 · fila 81"), estado de verificación, tarifa pendiente/gratuita/fija.
+- Oficinas **provisionales** aparecen marcadas con ⚠ en la paleta y en la ruta publicada. Si se agregan a una ruta, se muestra una advertencia antes de publicar.
+- Nota de la ruta visible debajo del preview de ruta en producción.
+
+### 1c. Usuarios y catálogos — 6 pestañas
+- **Oficinas**: 8 confirmadas + 4 provisionales (Fedatario, Coordinación Académica, Formación Continua, Comisión de Admisión) con notas de correspondencia TUSNE. Badge "Provisional" en amarillo.
+- **Trámites**: editor con requisitos estructurados (lista con tipo/obligatoriedad/nota + pestaña texto legacy), source, vigencia, tariffStatus.
+- **Usuarios y Accesos**: importación CSV, gestión individual, reseteo de contraseña.
+- **Roles y Permisos**: permiso `case.pay` independiente.
+- **Feriados**: calendario de días no hábiles para el cómputo de SLA. Los 13 feriados nacionales 2026 vienen cargados. Se pueden agregar días de cierre institucional.
+- **Auditoría**: log cronológico de cambios administrativos.
+
+---
 
 ## 2. Solicitante presenta un trámite CON costo
 
-Cerrar sesión → entrar como **Estudiante** (acceso directo).
+Entrar como **Estudiante** (2023100045 / 70223344 o acceso directo).
 
-1. "Nueva solicitud (FUT)" → elegir **Certificado modular** (S/ 25.00, se ve el costo en el mismo selector).
-2. Llenar fundamento y requisitos.
-3. Mostrar el bloque **"Pago del derecho de trámite"**: aparecen el Yape y la cuenta bancaria institucional, y un campo obligatorio para adjuntar el enlace del comprobante (captura de Yape/voucher).
-4. Enviar → se genera el cargo oficial (FUT), que además deja constancia de que el trámite tiene costo y de qué comprobante se adjuntó.
+1. "Nueva solicitud (FUT)" → elegir **Constancia de estudios** (S/ 25.00, 2 días hábiles).
+2. El checklist de requisitos ahora es **estructurado**: muestra badge de tipo por cada ítem.
+   - Items tipo **Formulario** solo muestran checkbox (el dato ya está en el FUT).
+   - Items tipo **Documento** muestran checkbox + campo de enlace de Google Drive.
+   - El comprobante de pago tiene su propio bloque separado al final.
+3. Adjuntar comprobante (captura de Yape/voucher). Es obligatorio para trámites con costo.
+4. Enviar → cargo oficial generado.
+
+Variante: elegir **Traslado de salida** (S/ 280) para mostrar un trámite de mayor complejidad con requisitos condicionales.
+
+---
 
 ## 3. Secretaría → Dirección
 
-1. Entrar como **Secretaría** (secretaria/secretaria123): validar la solicitud virtual, se genera el N.° de expediente definitivo y pasa automáticamente a Dirección.
-2. Entrar como **Dirección** (direccion/direccion123): revisar la ruta sugerida (para un trámite con costo, la ruta ya propone Tesorería). Si alguien quitara Tesorería de la ruta de un trámite pagado, aparece una advertencia explícita antes de firmar. Emitir el proveído.
+1. **Secretaría** (secretaria/secretaria123): validar FUT virtual → número de expediente asignado → pasa a Dirección. El detalle del expediente muestra los **requisitos estructurados del trámite** con emparejamiento visual de adjuntos.
+2. **Dirección** (direccion/direccion123):
+   - La ruta sugerida ya incluye Tesorería para trámites con costo.
+   - Si la ruta incluye una oficina provisional (ej. Fedatario), aparece aviso ⚠ antes de firmar.
+   - Si se quita Tesorería de un trámite pagado, aparece aviso de pago sin validar.
+   - Emitir el proveído.
+
+---
 
 ## 4. Tesorería valida el pago
 
-Cerrar sesión → pestaña de oficina **Tesorería** (o tesoreria/tesoreria123).
+Pestaña **Tesorería** o tesoreria/tesoreria123.
 
-1. Abrir el expediente: se ve la tarjeta "Pago pendiente" con el monto y, si el estudiante ya adjuntó su comprobante, un enlace para revisarlo.
-2. El botón "Completar y derivar" está deshabilitado — no se puede avanzar sin registrar el pago.
-3. "Registrar pago": monto, método (Yape/Plin ya es la primera opción), N.° de operación, fecha — el campo de evidencia viene pre-cargado con el comprobante que subió el estudiante.
-4. Al guardar, se genera el recibo de caja oficial y el botón de completar ya queda habilitado.
+1. Expediente muestra "Pago pendiente · S/ 25.00". El bloque de requisitos muestra el comprobante que adjuntó el solicitante con enlace directo.
+2. Botón "Completar y derivar" **deshabilitado** hasta registrar el pago.
+3. "Registrar pago": monto pre-cargado, método (Yape primera opción), N.° operación, fecha, evidencia pre-cargada del comprobante del estudiante.
+4. Al guardar → recibo oficial generado → botón habilitado → derivar al siguiente paso.
 
-## 5. Oficina normal — observación y subsanación
+---
 
-1. Con una oficina sin costo (ej. **Biblioteca**, biblioteca/biblioteca123), observar un expediente con un motivo claro.
-2. Volver a Estudiante, subsanar la observación desde su portal, y comprobar que el expediente regresa automáticamente a la misma oficina.
-3. Mostrar que mientras estuvo observado (o esperando pago en Tesorería), el badge de SLA decía "SLA pausado" en vez de contar esos días como demora de la oficina.
+## 5. Oficina operativa — observación, SLA y subsanación
+
+1. Oficina **Secretaría Académica** (secacad123): completar su paso en un expediente.
+2. Oficina **EFSRT** (efsrt123): observar un expediente con motivo claro.
+3. Volver a Estudiante: subsanar desde el portal → el expediente regresa automáticamente a EFSRT.
+4. Mostrar que durante la observación el badge de SLA dice "**SLA pausado**" — esos días no cuentan como demora de la institución. Lo mismo ocurre mientras Tesorería espera el pago.
+
+---
 
 ## 6. Cierre y trazabilidad
 
-1. Completar el último paso de la ruta → el expediente vuelve a Mesa de Partes.
-2. Como Secretaría, registrar la entrega/cierre.
-3. Mostrar `Libro digital`: ahora con columna de **Pago** (Pagado/Pendiente/Gratuito) junto a las firmas y el V°B°.
-4. Mostrar `Seguimiento global`: cualquiera puede buscar por N.° de expediente o DNI y ver, además del recorrido, la confirmación de pago con acceso al recibo.
+1. Completar último paso → expediente en "Respuesta en Mesa de Partes".
+2. **Secretaría** → registrar entrega y cerrar.
+3. `Libro digital`:
+   - Columna **Pago** (Pagado S/ X / Pendiente S/ X / Gratuito).
+   - Columna **SLA** con badge vencido/por vencer/pausado.
+   - Exportar CSV oficial.
+4. `Seguimiento global`: buscar por número, DNI o nombre. El detalle muestra `PaymentStatusCard` con estado del pago y, si está pagado, botón "Ver recibo".
 
-## 7. Vista financiera del Administrador
+---
 
-Volver a **Administrador** → `Caja y pagos`:
+## 7. Caja y reportes financieros
 
-- Total recaudado, pagos registrados, monto pendiente de cobro, y desglose por trámite.
-- Abrir el recibo de cualquier pago desde la tabla.
-- Exportar el reporte a CSV.
+**Administrador** → `Caja y pagos`:
+- Total recaudado, pagos registrados, pendientes de cobro.
+- Desglose por trámite y por fecha.
+- Abrir recibo desde la tabla.
+- Exportar CSV de caja.
+- El admin puede corregir el monto de un pago mal digitado por Tesorería (permiso exclusivo `case.pay_edit`).
 
-## 8. Autogestión de cuenta
+---
 
-Con cualquier cuenta real (no un perfil demo), mostrar "Cambiar mi contraseña" en el menú lateral — pide la contraseña actual antes de permitir el cambio.
+## 8. Demostrar cobertura del catálogo TUSNE
 
-## Mensaje clave
+En `Trámites y diseñador de rutas` o `Catálogo de Trámites`:
+- **Grupo 1 (activos)**: Constancias de estudios, matrícula, egresado, biblioteca; Certificado modular; Examen de suficiencia profesional.
+- **Grupo 2 (activos)**: Constancia de no adeudar, disponibilidad de vacante, tercio/quinto, primera matrícula, otras constancias, copia de expediente, récord académico, cambio de nombre, ficha EFSRT, copia de recibo, copia de sílabos. `Autenticación de documentos` marcado inactivo (oficina Fedatario provisional).
+- **Grupo 3 (activos)**: Reserva de matrícula, licencia, reincorporación, traslados (ingreso/salida/interno), convalidaciones (interna/externa/EFSRT), regularización.
+- **Grupo 4 (activos)**: Recuperación de U.D., evaluación extraordinaria, trabajo de aplicación, trámite de título, duplicados, examen de idiomas, certificado de idiomas duplicado, copia de acta.
+- **Pendiente (Grupo 5)**: Admisión, matrículas especiales, cursos, alquileres, copias/impresiones — alcance a confirmar con la institución.
 
-El prototipo ya no es solo el flujo documentario: incluye el ciclo completo de **cobro de derechos de trámite** (tarifario, evidencia del solicitante, validación de Tesorería, recibo oficial y reporte financiero), con permisos granulares y auditoría administrativa. Los documentos en `docs/HANDOFF_BACKEND.md`, `docs/HANDOFF_FRONTEND.md` y `docs/SPRINT2_PASARELA_PAGOS.md` detallan cómo el equipo de producción (Laravel 11 + PostgreSQL) debe reproducir este mismo comportamiento con datos reales, y qué parte (verificación automática de pagos) queda para una segunda etapa.
+---
+
+## 9. Autogestión de cuenta
+
+Cualquier cuenta real → "Cambiar mi contraseña" en el menú lateral — pide la contraseña actual.
+
+---
+
+## Mensaje clave para el ingeniero
+
+El prototipo cubre el ciclo completo: **presentación de FUT → validación → proveído → pago en Tesorería → atención por oficinas → observación/subsanación → entrega → cierre**. El catálogo incluye los grupos 1–4 del TUSNE 2026 (≈ 40 trámites) con requisitos estructurados, SLA en días hábiles, feriados configurables y snapshots inmutables por expediente.
+
+Lo que aún requiere decisión institucional antes de activar en producción:
+- Vigencia normativa del TUSNE (documento y fecha de aprobación).
+- Oficinas provisionales: Fedatario, Coordinación Académica, Formación Continua, Comisión de Admisión.
+- Grupo 5: qué servicios generan expediente y cuáles son operaciones de Caja/matrícula directa.
+- Plazos vacíos o en rango (admisión: 30–50 días; cursos: vacíos).
+- Tarifas por tipo de solicitante (cursos: 3 precios) y por cantidad (sílabos por unidad).
+
+Los documentos `HANDOFF_BACKEND.md`, `HANDOFF_FRONTEND.md` y `SPRINT2_PASARELA_PAGOS.md` detallan cómo el equipo de producción (Laravel 11 + PostgreSQL) debe reproducir este comportamiento con datos reales.

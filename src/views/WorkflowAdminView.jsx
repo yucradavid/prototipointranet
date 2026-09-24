@@ -207,7 +207,7 @@ function Designer({ procedureId, config, offices, monto, onPublish, onDirtyChang
   const publish = () => {
     try {
       const route = extractRoute(nodes, edges)
-      const errs = validateWorkflowRoute(route)
+      const errs = validateWorkflowRoute(route, offices)
       if (errs.length) throw new Error(errs[0])
       onPublish(procedureId, route)
       const paymentWarning = monto > 0 && !route.includes('tesoreria')
@@ -280,11 +280,18 @@ function Designer({ procedureId, config, offices, monto, onPublish, onDirtyChang
                   e.dataTransfer.effectAllowed = 'move'
                 }}
                 className="palette-office"
+                title={o.provisional ? `⚠ Provisional: ${o.note || 'Pendiente de validación institucional'}` : o.name}
+                style={o.provisional ? { background: '#fffbeb', borderColor: '#fcd34d' } : {}}
               >
                 <span style={{ background: o.color }}>
                   <Building2 size={16} />
                 </span>
-                <b>{o.name}</b>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <b style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.name}</b>
+                  {o.provisional && (
+                    <span style={{ fontSize: 10, color: '#b45309', fontWeight: 700 }}>⚠ Provisional</span>
+                  )}
+                </div>
                 <button
                   type="button"
                   className="palette-office-add"
@@ -508,7 +515,8 @@ export default function WorkflowAdminView({
                     Ruta canónica en producción:
                   </span>
                   <span style={{ fontSize: 11, color: 'var(--arib-navy-light)' }}>
-                    SLA oficial: <b>{p.sla} días hábiles</b>{p.monto > 0 ? <> · Costo: <b>S/ {Number(p.monto).toFixed(2)}</b></> : ''}
+                    SLA oficial: <b>{p.sla} días hábiles</b>{p.monto > 0 ? <> · Costo: <b>S/ {Number(p.monto).toFixed(2)}</b></> : ' · Gratuito'}
+                    {p.active === false && <span style={{ color: '#b45309', fontWeight: 700, marginLeft: 8 }}>· Inactivo</span>}
                   </span>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
@@ -520,12 +528,21 @@ export default function WorkflowAdminView({
                       <i style={{ fontStyle: 'normal', color: 'var(--arib-navy-light)' }}>→</i>
                       <b style={{ color: offices.find(o => o.id === id)?.color || 'var(--arib-primary)' }}>
                         {officeName(id)}
+                        {offices.find(o => o.id === id)?.provisional && (
+                          <span style={{ fontSize: 10, color: '#b45309', marginLeft: 3 }}>⚠</span>
+                        )}
                       </b>
                     </React.Fragment>
                   ))}
                   <i style={{ fontStyle: 'normal', color: 'var(--arib-navy-light)' }}>→</i>
                   <b style={{ color: 'var(--arib-success)' }}>Cierre y Entrega</b>
                 </div>
+                {config.note && (
+                  <div style={{ marginTop: 8, fontSize: 11, color: '#64748b', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 6, padding: '6px 10px', display: 'flex', gap: 6 }}>
+                    <span style={{ flexShrink: 0 }}>📋</span>
+                    <span>{config.note}</span>
+                  </div>
+                )}
               </div>
 
               {p.monto > 0 && !config.route.includes('tesoreria') && (

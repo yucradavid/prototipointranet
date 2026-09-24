@@ -4,8 +4,8 @@ import {
   Clock3, Shuffle, FileText, UserRound, ArrowLeftRight, Check, CornerDownRight,
   ShieldAlert, Sparkles, MessageSquare, ExternalLink, Wallet, Receipt, History
 } from 'lucide-react'
-import { Panel, StatusBadge, SlaBadge, Badge, Empty, RouteStrip, Timeline, FileList, Modal, Field } from '../components/ui'
-import { officeName, procedureById } from '../data/catalogs'
+import { Panel, StatusBadge, SlaBadge, Badge, Empty, RouteStrip, Timeline, FileList, Modal, Field, RequirementsBlock } from '../components/ui'
+import { officeName, procedureById, procedureForExpediente } from '../data/catalogs'
 import ReciboPagoModal from '../components/ReciboPagoModal'
 import { fileToCompressedDataUrl, isDataUrl } from '../utils/imageUpload'
 
@@ -92,7 +92,7 @@ export default function OfficeWorkbenchView({ officeId, items, offices, permissi
   }, [baseQueue, resolvedByOffice, filter])
 
   const selected = items.find(x => x.id === selectedId) || queue[0]
-  const procedure = procedureById(selected?.procedureId)
+  const procedure = procedureForExpediente(selected)
   const needsPayment = officeId === 'tesoreria' && (procedure?.monto || 0) > 0
   const isPaid = selected?.pago?.estado === 'PAGADO'
   const paymentPending = needsPayment && !isPaid
@@ -342,6 +342,9 @@ export default function OfficeWorkbenchView({ officeId, items, offices, permissi
                     </h4>
                     <FileList files={selected.adjuntos} />
                   </div>
+
+                  {/* Requirements checklist for this procedure */}
+                  <RequirementsBlock exp={selected} />
 
                   {/* Payment / Caja box (only for Tesorería on paid procedures) */}
                   {needsPayment && (

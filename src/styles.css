@@ -1704,6 +1704,46 @@ button:disabled {
   place-items: center;
 }
 
+/* Requisitos con condición: fondo ligeramente distinto */
+.requirement-row.conditional {
+  background: #fffbeb;
+  border-radius: var(--radius-md);
+  padding: 4px 8px;
+}
+
+/* Cuando solo hay un campo (formulario: sin Drive) */
+.requirement-row.form-only {
+  grid-template-columns: 1fr;
+}
+
+/* Badges de tipo de requisito */
+.req-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin-right: 5px;
+  flex-shrink: 0;
+  text-transform: uppercase;
+}
+.req-badge.form     { background: #e0f2fe; color: #0369a1; }
+.req-badge.doc      { background: #f0fdf4; color: #15803d; }
+.req-badge.cond     { background: #fef3c7; color: #92400e; }
+.req-badge.optional { background: #f3f4f6; color: #6b7280; }
+
+/* Nota aclaratoria bajo el label de un requisito */
+.req-note {
+  display: block;
+  font-size: 10px;
+  font-weight: 400;
+  color: #94a3b8;
+  margin-top: 2px;
+  font-style: italic;
+}
+
 /* -------------------------------------------------------------
    MODALS & TOASTS
 ------------------------------------------------------------- */

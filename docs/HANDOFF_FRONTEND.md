@@ -15,6 +15,7 @@ Solicitante → Mesa de Partes → Dirección (proveído obligatorio) → Oficin
 - Mesa de Partes y Dirección son pasos fijos: la UI nunca debe permitir configurarlos ni saltearlos (compárenlo con `WorkflowAdminView.jsx`, donde esos dos nodos aparecen bloqueados en el diseñador de rutas).
 - Ninguna oficina debe mostrar un expediente en su bandeja si Dirección no emitió antes su proveído.
 - El componente `RouteStrip` (en `src/components/ui.jsx`) es el que dibuja visualmente el recorrido — pórtenlo tal cual, ya resuelve los casos de ruta parcial/completa/observada.
+- Algunas oficinas del catálogo son **provisionales** (`office.provisional === true`: Fedatario, Coordinación Académica, Formación Continua, Comisión de Admisión — aún no confirmadas por la institución). Se marcan con badge ⚠ en la paleta del diseñador de rutas (`WorkflowAdminView.jsx`) y, si Dirección intenta emitir un proveído cuya ruta incluye una de estas oficinas, debe ver una advertencia explícita antes de firmar (`validateWorkflowRoute`). No las traten como oficinas normales en el selector.
 
 ## 2. Estados del expediente y qué debe verse en cada uno
 
@@ -54,6 +55,20 @@ Esto es lo más nuevo y lo que más depende de que el backend ya tenga listo su 
 
 Punto honesto que también les toca a ustedes en la UI: **hoy no hay verificación automática del pago**, así que el copy de las pantallas (ya escrito en `OfficeWorkbenchView.jsx` y `PaymentStatusCard`) es deliberadamente claro sobre eso ("Aún no se ha registrado tu pago en Tesorería..."). Si el backend más adelante suma verificación automática vía pasarela, ese copy y ese flujo van a cambiar (probablemente a un estado intermedio tipo "pago en verificación").
 
+## 4b. Requisitos estructurados del trámite (`RequirementsBlock`)
+
+Los ~38 trámites del catálogo (TUSNE 2026, grupos 1–4) ya no describen sus requisitos como un texto libre — cada uno trae `requirementsList: [{ label, type, required, note? }]` (ver `src/models/procedure.js`). El componente que pinta esto, usado en el portal del solicitante, Secretaría y las oficinas, distingue:
+
+- `type: 'form'` — dato que ya viene en el FUT (solo checkbox, sin adjunto).
+- `type: 'document'` — exige checkbox + campo de enlace (hoy Google Drive; en producción, subida real).
+- `type: 'payment'` — el comprobante de pago, con su propio bloque separado al final del formulario.
+- `type: 'condition'` — una condición que evalúa la oficina, no el solicitante.
+- `required: 'conditional'` — obliga a un choice explícito "aplica / no aplica" antes de permitir el envío (`requirementSatisfied` en `src/models/procedure.js` es la fuente de verdad de cuándo un requisito está satisfecho).
+
+Pórtenlo tal cual: la validación de "puedo enviar" no es solo "hay algo en el input", es la función `requirementSatisfied`/`requirementIncluded` de `src/models/procedure.js`, y debe ejecutarse igual en el cliente (UX) y en el backend (autoridad real).
+
+También hay trámites con `active: false` (ej. `autenticacion_documentos`, `copia_silabos`) — deben desaparecer del selector del portal (`canRequestProcedure`) pero seguir siendo visibles/editables en `CatalogAdminView.jsx` para el administrador.
+
 ## 5. Contrato de API a consumir
 
 Debe coincidir con lo que expone Backend (ver su documento). Si el backend cambia algo acá, tienen que avisarles a ustedes.
@@ -69,7 +84,7 @@ PUT    /api/offices/{id}                  (admin)
 DELETE /api/offices/{id}                  (admin)
 
 GET    /api/procedures
-POST   /api/procedures                    (admin)  { name, category, requires, sla, monto, route[] }
+POST   /api/procedures                    (admin)  { name, category, requirementsList[], sla, tariffStatus, monto, active, source, validFrom, route[] }
 PUT    /api/procedures/{id}
 DELETE /api/procedures/{id}               (admin)
 POST   /api/procedures/{id}/publish-route (admin/direccion)  { route[] }
@@ -131,6 +146,7 @@ El backend va a devolver los mismos mensajes que hoy lanza `src/workflowEngine.j
 | Archivo | Para qué sirve mirarlo |
 |---|---|
 | `src/App.jsx` | Orquestación general: qué vista se renderiza por rol, cómo se manejan toasts/confirmaciones/sesión |
+| `src/models/procedure.js` | Requisitos estructurados, `canRequestProcedure`, `requirementSatisfied`/`requirementIncluded` — la lógica detrás de `RequirementsBlock` (sección 4b) |
 | `src/components/ui.jsx` | Componentes compartidos ya resueltos: `Panel`, `Badge`, `StatusBadge`, `SlaBadge`, `PaymentStatusCard`, `Modal`, `Field`, `FileList`, `Timeline`, `Kpi` |
 | `src/views/*.jsx` | Una vista por rol/pantalla — cada una ya tiene resuelta su UX (filtros, plantillas rápidas, validaciones de formulario con `disabled`) |
 | `src/components/CargoModal.jsx`, `ReciboPagoModal.jsx` | Comprobantes imprimibles (FUT y recibo de caja) — mismo layout, dos usos distintos |

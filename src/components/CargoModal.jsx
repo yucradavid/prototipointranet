@@ -1,10 +1,10 @@
 import React from 'react'
 import { Printer, X, ShieldCheck, Download, CheckCircle2 } from 'lucide-react'
-import { procedureById } from '../data/catalogs'
+import { procedureById, procedureForExpediente } from '../data/catalogs'
 
 export default function CargoModal({ exp, onClose }) {
   if (!exp) return null
-  const proc = procedureById(exp.procedureId)
+  const proc = procedureForExpediente(exp)
 
   return (
     <div className="modal-backdrop" onMouseDown={e => { if (e.target === e.currentTarget) onClose?.() }}>

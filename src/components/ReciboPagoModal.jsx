@@ -1,10 +1,10 @@
 import React from 'react'
 import { Printer, X, ShieldCheck } from 'lucide-react'
-import { procedureById } from '../data/catalogs'
+import { procedureById, procedureForExpediente } from '../data/catalogs'
 
 export default function ReciboPagoModal({ exp, onClose }) {
   if (!exp?.pago) return null
-  const proc = procedureById(exp.procedureId)
+  const proc = procedureForExpediente(exp)
   const pago = exp.pago
 
   return (

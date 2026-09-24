@@ -1,6 +1,7 @@
+import { canRequestProcedure } from '../models/procedure.js'
 import React,{useMemo,useState} from 'react'
 import { Inbox, Search, Plus, ArrowRight, CheckCircle2, FileText, Clock3, ExternalLink, Send, ShieldAlert, ArrowUpRight, CheckCheck, UploadCloud, Trash2 } from 'lucide-react'
-import { Panel, StatusBadge, SlaBadge, Badge, Empty, RouteStrip, Timeline, FileList, Modal, Field } from '../components/ui'
+import { Panel, StatusBadge, SlaBadge, Badge, Empty, RouteStrip, Timeline, FileList, Modal, Field, RequirementsBlock } from '../components/ui'
 import CargoModal from '../components/CargoModal'
 import { PROGRAMS, CONDITIONS, procedureById } from '../data/catalogs'
 import { fileToCompressedDataUrl } from '../utils/imageUpload'
@@ -64,12 +65,14 @@ export default function SecretariaWorkbenchView({items,procedures,permissions=[]
 
   const submitPhysical=()=>{
     const p=procedureById(form.procedureId)
+    if(!canRequestProcedure(p)) { setAttError('Selecciona un trámite disponible con tarifa definida.'); return }
     if(!form.solicitante.trim()) return
     const exp=onCreatePhysical({
       ...form,
       asunto:p.name,
       ownerProfile:form.condicion==='Docente'?'docente':'estudiante'
     })
+    if(!exp) return
     setModal(false)
     setForm(physicalBase)
     setAttLinkUrl('');setAttError('')
@@ -276,6 +279,7 @@ export default function SecretariaWorkbenchView({items,procedures,permissions=[]
               {/* Archivos y Documentos */}
               <h4>Documentos presentados y folios</h4>
               <FileList files={selected.adjuntos}/>
+              <RequirementsBlock exp={selected}/>
 
               {/* Historial */}
               <h4>Historial de movimientos del expediente</h4>
@@ -307,7 +311,8 @@ export default function SecretariaWorkbenchView({items,procedures,permissions=[]
         <div className="form-grid two">
           <Field label="Tipo de trámite / Asunto" required>
             <select value={form.procedureId} onChange={e=>setForm({...form,procedureId:e.target.value})}>
-              {procedures.map(p=><option value={p.id} key={p.id}>{p.name} (SLA: {p.sla} días)</option>)}
+              <option value="">Selecciona un trámite disponible</option>
+              {procedures.filter(canRequestProcedure).map(p=><option value={p.id} key={p.id}>{p.name} (SLA: {p.sla} días)</option>)}
             </select>
           </Field>
 

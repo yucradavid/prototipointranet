@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { Search, Download, BookOpen, FileText, CheckCircle2, UserRound, ShieldCheck, Clock3, Eye, ChevronLeft, ChevronRight } from 'lucide-react'
 import { Panel, StatusBadge, SlaBadge, Badge, Empty, Timeline } from '../components/ui'
-import { officeName, procedureById } from '../data/catalogs'
+import { officeName, procedureById, procedureForExpediente } from '../data/catalogs'
 import { slaInfo } from '../workflowEngine'
 
 const PAGE_SIZE = 25
@@ -41,7 +41,7 @@ export default function BookAuditView({ items }) {
   const selected = items.find(x => x.id === selectedId) || pageRows[0] || rows[0]
 
   const paymentLabel = x => {
-    const monto = procedureById(x.procedureId)?.monto || 0
+    const monto = procedureForExpediente(x)?.monto || 0
     if (!monto) return 'Gratuito'
     return x.pago?.estado === 'PAGADO' ? `Pagado (S/ ${Number(x.pago.monto).toFixed(2)})` : `Pendiente (S/ ${Number(monto).toFixed(2)})`
   }
@@ -202,7 +202,7 @@ export default function BookAuditView({ items }) {
                     </td>
                     <td>
                       {(() => {
-                        const monto = procedureById(x.procedureId)?.monto || 0
+                        const monto = procedureForExpediente(x)?.monto || 0
                         if (!monto) return <Badge tone="neutral">Gratuito</Badge>
                         return x.pago?.estado === 'PAGADO'
                           ? <Badge tone="success">Pagado S/ {Number(x.pago.monto).toFixed(2)}</Badge>

@@ -1,10 +1,52 @@
-import { officeName, procedureById } from './data/catalogs.js'
+import { captureProcedure, canRequestProcedure } from './models/procedure.js'
+import { officeName, procedureById, procedureForExpediente, HOLIDAYS } from './data/catalogs.js'
+
+// ─── Calendario de días hábiles ───────────────────────────────────────────────
+// Convierte una fecha en clave 'YYYY-MM-DD' para comparar con HOLIDAYS.
+function dateKey(d){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}` }
+
+function isWorkday(d){
+  const dow=d.getDay()           // 0=dom, 6=sab
+  if(dow===0||dow===6) return false
+  return !HOLIDAYS.some(h=>h.date===dateKey(d))
+}
+
+// Calendar convention for this prototype: start counting after registration.
+// The institution still needs to confirm its cutoff and suspension rules.
+export function addWorkdays(start, n){
+  if(!Number.isInteger(n)||n<0) throw new Error('El plazo debe ser un número entero de días.')
+  const d=new Date(start)
+  if(!Number.isFinite(d.getTime())) throw new Error('Fecha de inicio inválida.')
+  d.setHours(0,0,0,0)
+  let remaining=n
+  while(remaining>0){
+    d.setDate(d.getDate()+1)
+    if(isWorkday(d)) remaining--
+  }
+  return d
+}
+
+// Compare calendar dates, excluding from and including to, regardless of time.
+export function countWorkdays(from, to){
+  const a=new Date(from), b=new Date(to)
+  a.setHours(0,0,0,0); b.setHours(0,0,0,0)
+  if(a>b) return -countWorkdays(b,a)
+  let count=0
+  while(a<b){a.setDate(a.getDate()+1);if(isWorkday(a)) count++}
+  return count
+}
+
+function registrationTerms(data){
+  const proc=procedureById(data.procedureId)
+  if(!canRequestProcedure(proc)) throw new Error('El trámite está inactivo o tiene una tarifa pendiente de definir.')
+  return captureProcedure(proc)
+}
 
 const event=(actor,action,text,time)=>({time,actor,action,text})
 
 export function createVirtual(data, numero, time, actor){
   const tracking=`ARIB-${numero}`
-  return {...data,id:`sol-${Date.now()}`,numero,tracking,canal:'Virtual',tipoDocumento:'FUT',estado:'SOLICITUD_VIRTUAL',oficinaActual:'mesa_partes',firmaSecretaria:'',vistoBuenoDireccion:'',proveido:'',routePlan:[],routeIndex:-1,routeVersion:null,respuesta:'',documentoRespuesta:'',observation:null,pago:null,pauseStartedAt:null,slaPausedMs:0,historial:[event(actor||'Solicitante','Envío virtual',`Envió FUT virtual. N.° de expediente ${numero} asignado. Pendiente de validación en Mesa de Partes.`,time)]}
+  return {...data,procedureSnapshot:registrationTerms(data),id:`sol-${Date.now()}`,numero,tracking,canal:'Virtual',tipoDocumento:'FUT',estado:'SOLICITUD_VIRTUAL',oficinaActual:'mesa_partes',firmaSecretaria:'',vistoBuenoDireccion:'',proveido:'',routePlan:[],routeIndex:-1,routeVersion:null,respuesta:'',documentoRespuesta:'',observation:null,pago:null,pauseStartedAt:null,slaPausedMs:0,historial:[event(actor||'Solicitante','Envío virtual',`Envió FUT virtual. N.° de expediente ${numero} asignado. Pendiente de validación en Mesa de Partes.`,time)]}
 }
 
 export function registerVirtual(exp,time,actor){
@@ -13,7 +55,7 @@ export function registerVirtual(exp,time,actor){
 }
 
 export function createPhysical(data,numero,time,actor){
-  return {...data,id:`exp-${numero}`,numero,tracking:`ARIB-${numero}`,canal:'Físico',tipoDocumento:'FUT',estado:'EN_DIRECCION',oficinaActual:'direccion',firmaSecretaria:'Secretaría · recepción conforme',vistoBuenoDireccion:'',proveido:'',routePlan:[],routeIndex:-1,routeVersion:null,respuesta:'',documentoRespuesta:'',observation:null,pago:null,pauseStartedAt:null,slaPausedMs:0,historial:[event(actor||'Secretaría','Registro',`Registró expediente físico N.° ${numero} y lo remitió obligatoriamente a Dirección.`,time)]}
+  return {...data,procedureSnapshot:registrationTerms(data),id:`exp-${numero}`,numero,tracking:`ARIB-${numero}`,canal:'Físico',tipoDocumento:'FUT',estado:'EN_DIRECCION',oficinaActual:'direccion',firmaSecretaria:'Secretaría · recepción conforme',vistoBuenoDireccion:'',proveido:'',routePlan:[],routeIndex:-1,routeVersion:null,respuesta:'',documentoRespuesta:'',observation:null,pago:null,pauseStartedAt:null,slaPausedMs:0,historial:[event(actor||'Secretaría','Registro',`Registró expediente físico N.° ${numero} y lo remitió obligatoriamente a Dirección.`,time)]}
 }
 
 export function issueProveido(exp,{proveido,routePlan,routeVersion},time,actor){
@@ -38,7 +80,7 @@ export function correctObservation(exp,{files=[]},time,actor){
 }
 
 export function requiresPayment(exp){
-  const proc=procedureById(exp?.procedureId)
+  const proc=procedureForExpediente(exp)
   return exp?.oficinaActual==='tesoreria'&&(proc?.monto||0)>0
 }
 
@@ -114,11 +156,19 @@ export function routeProgress(exp){
   return {all,completed,total:all.length}
 }
 
-export function validateWorkflowRoute(route){
+export function validateWorkflowRoute(route, offices = []){
   const errors=[]
   if(!Array.isArray(route)||route.length===0) errors.push('Debe existir al menos una oficina posterior a Dirección.')
   if(new Set(route).size!==route.length) errors.push('La ruta no debe repetir oficinas en esta versión del prototipo.')
   if(route.some(x=>['mesa_partes','direccion'].includes(x))) errors.push('Mesa de Partes y Dirección son pasos obligatorios bloqueados y no deben repetirse.')
+  // Advertencia (no bloqueo) por oficinas provisionales en la ruta
+  if(offices.length){
+    const provisionales=route.filter(id=>offices.find(o=>o.id===id)?.provisional)
+    if(provisionales.length){
+      const names=provisionales.map(id=>offices.find(o=>o.id===id)?.name||id).join(', ')
+      errors.push(`⚠ La ruta incluye oficina(s) marcada(s) como provisional (${names}). Confirma con la institución antes de usar en producción.`)
+    }
+  }
   return errors
 }
 
@@ -129,19 +179,24 @@ function parseFechaPE(fecha){
 }
 
 export function slaInfo(exp,now=new Date()){
-  const proc=procedureById(exp?.procedureId)
+  const proc=procedureForExpediente(exp)
   if(!proc?.sla) return null
   const start=parseFechaPE(exp.fecha)
   if(!start) return null
-  const due=new Date(start)
-  due.setDate(due.getDate()+proc.sla)
+  // Count from the next workday and allow the full final calendar day.
+  const due=addWorkdays(start,proc.sla)
+  due.setHours(23,59,59,999)
   const closed=exp.estado==='FINALIZADO'
   const nowMs=now.getTime()
+  // Días de pausa acumulados (observación o pago pendiente): se descuentan del tiempo
+  // efectivo para no penalizar al trámite por demoras del solicitante o de Tesorería.
   const ongoingPauseMs=exp?.pauseStartedAt!=null?Math.max(0,nowMs-exp.pauseStartedAt):0
   const pausedMs=(exp?.slaPausedMs||0)+ongoingPauseMs
   const effectiveNow=new Date(nowMs-pausedMs)
-  const daysLeft=Math.ceil((due-effectiveNow)/86400000)
-  return {due,daysLeft,overdue:!closed&&effectiveNow>due,closed,paused:exp?.pauseStartedAt!=null}
+  // Días hábiles restantes: positivo = queda tiempo, negativo = vencido
+  const daysLeft=countWorkdays(effectiveNow,due)
+  const overdue=!closed&&effectiveNow>due
+  return {due,daysLeft,overdue,closed,paused:exp?.pauseStartedAt!=null}
 }
 
 export function canDeleteOffice(officeId,{items=[],workflows={}}={}){

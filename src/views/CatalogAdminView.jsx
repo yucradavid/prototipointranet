@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react'
-import { Plus, Pencil, Trash2, LockKeyhole, Building2, BookOpen, Users, Palette, CheckCircle2, ShieldCheck, Wallet, History, Search } from 'lucide-react'
+import { Plus, Pencil, Trash2, LockKeyhole, Building2, BookOpen, Users, ShieldCheck, Wallet, History, Search, AlertTriangle, Info, Calendar } from 'lucide-react'
 import { Panel, Badge, Modal, Field } from '../components/ui'
 import ProcedureFormModal from '../components/ProcedureFormModal'
 import UserAdminView from './UserAdminView'
@@ -7,7 +7,7 @@ import RolePermissionsView from './RolePermissionsView'
 import AuditLogView from './AuditLogView'
 import { officeName } from '../data/catalogs'
 
-const emptyOffice = { name: '', short: '', color: '#0284c7', roleTitle: 'Encargado' }
+const emptyOffice = { name: '', short: '', color: '#0284c7', roleTitle: 'Encargado', note: '', provisional: false }
 
 export default function CatalogAdminView({
   offices,
@@ -15,6 +15,7 @@ export default function CatalogAdminView({
   users,
   rolePermissions,
   paymentInfo,
+  holidays,
   auditLog,
   onSaveOffice,
   onDeleteOffice,
@@ -27,16 +28,20 @@ export default function CatalogAdminView({
   onBulkSetActive,
   onImportStudents,
   onSaveRolePermissions,
-  onSavePaymentInfo
+  onSavePaymentInfo,
+  onSaveHolidays
 }) {
   const [tab, setTab] = useState('oficinas')
   const [officeModal, setOfficeModal] = useState(null)
   const [procModal, setProcModal] = useState(null)
   const [paymentForm, setPaymentForm] = useState(paymentInfo)
+  const [holidaysList, setHolidaysList] = useState(holidays || [])
+  const [holidayForm, setHolidayForm] = useState({ date: '', name: '' })
   const [officeQuery, setOfficeQuery] = useState('')
   const [procQuery, setProcQuery] = useState('')
 
   useEffect(() => { setPaymentForm(paymentInfo) }, [paymentInfo])
+  useEffect(() => { setHolidaysList(holidays || []) }, [holidays])
 
   const filteredOffices = useMemo(() =>
     offices.filter(o => `${o.name} ${o.short} ${o.roleTitle || ''}`.toLowerCase().includes(officeQuery.toLowerCase())),
@@ -114,6 +119,13 @@ export default function CatalogAdminView({
           <History size={16} style={{ marginRight: 6 }} />
           Auditoría <i>{auditLog?.length || 0}</i>
         </button>
+        <button
+          className={tab === 'feriados' ? 'active' : ''}
+          onClick={() => setTab('feriados')}
+        >
+          <Calendar size={16} style={{ marginRight: 6 }} />
+          Feriados <i>{holidaysList.length}</i>
+        </button>
       </div>
 
       {/* Tab: Audit Log */}
@@ -141,7 +153,6 @@ export default function CatalogAdminView({
         />
       )}
 
-      {/* Tab: Offices */}
       {tab === 'oficinas' && (
         <Panel
           title="Oficinas y Dependencias Institucionales"
@@ -158,80 +169,85 @@ export default function CatalogAdminView({
             </div>
           }
         >
+          {/* Aviso de oficinas provisionales */}
+          {offices.some(o => o.provisional) && (
+            <div className="rule-banner" style={{ marginBottom: 16 }}>
+              <AlertTriangle size={18} style={{ color: '#b45309', flexShrink: 0 }} />
+              <div>
+                <b>Hay {offices.filter(o => o.provisional).length} oficina(s) provisionales pendientes de validación</b>
+                <span>
+                  Aparecen en el Excel TUSNE 2026 pero aún no se ha confirmado con la institución si son
+                  dependencias formales, cargos dentro de otra oficina o comisiones temporales. No asignarlas
+                  a rutas de producción hasta confirmar. Lee la columna "Notas" para el detalle de cada una.
+                </span>
+              </div>
+            </div>
+          )}
+
           <div className="table-wrap">
             <table>
               <thead>
                 <tr>
                   <th>Dependencia / Oficina</th>
                   <th>Código</th>
-                  <th>Color distintivo</th>
+                  <th>Color</th>
                   <th>Tipo</th>
+                  <th>Notas de correspondencia TUSNE</th>
                   <th style={{ textAlign: 'right' }}>Acciones</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredOffices.length === 0 && (
-                  <tr><td colSpan={5} style={{ textAlign: 'center', padding: 24, color: 'var(--arib-navy-light)', fontSize: 13 }}>Sin oficinas que coincidan con la búsqueda.</td></tr>
+                  <tr><td colSpan={6} style={{ textAlign: 'center', padding: 24, color: 'var(--arib-navy-light)', fontSize: 13 }}>Sin oficinas que coincidan con la búsqueda.</td></tr>
                 )}
                 {filteredOffices.map(o => {
                   const locked = ['mesa_partes', 'direccion'].includes(o.id)
                   return (
-                    <tr key={o.id}>
+                    <tr key={o.id} style={o.provisional ? { background: '#fffbeb' } : {}}>
                       <td>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                          <span
-                            className="office-color"
-                            style={{
-                              background: o.color,
-                              display: 'inline-block',
-                              width: 14,
-                              height: 14,
-                              borderRadius: 4,
-                              flexShrink: 0
-                            }}
-                          />
-                          <b>{o.name}</b>
+                          <span style={{ background: o.color, display: 'inline-block', width: 14, height: 14, borderRadius: 4, flexShrink: 0 }} />
+                          <div>
+                            <b>{o.name}</b>
+                            {o.roleTitle && <div style={{ fontSize: 11, color: 'var(--arib-navy-light)' }}>{o.roleTitle}</div>}
+                          </div>
                         </div>
                       </td>
                       <td>
-                        <code style={{ background: 'var(--arib-surface-subtle)', padding: '2px 6px', borderRadius: 4, fontSize: 12 }}>
-                          {o.short}
-                        </code>
+                        <code style={{ background: 'var(--arib-surface-subtle)', padding: '2px 6px', borderRadius: 4, fontSize: 12 }}>{o.short}</code>
                       </td>
                       <td>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                          <span style={{ display: 'inline-block', width: 24, height: 16, background: o.color, borderRadius: 4, border: '1px solid var(--arib-border)' }}></span>
+                          <span style={{ display: 'inline-block', width: 24, height: 16, background: o.color, borderRadius: 4, border: '1px solid var(--arib-border)' }} />
                           <span style={{ fontSize: 12, color: 'var(--arib-navy-light)' }}>{o.color}</span>
                         </div>
                       </td>
                       <td>
                         {locked ? (
-                          <Badge tone="neutral">
-                            <LockKeyhole size={11} style={{ marginRight: 4 }} /> Fija (Estructural)
-                          </Badge>
+                          <Badge tone="neutral"><LockKeyhole size={11} style={{ marginRight: 4 }} />Fija</Badge>
+                        ) : o.provisional ? (
+                          <Badge tone="warning"><AlertTriangle size={11} style={{ marginRight: 4 }} />Provisional</Badge>
                         ) : (
                           <Badge tone="info">Operativa</Badge>
                         )}
                       </td>
+                      <td style={{ maxWidth: 280, fontSize: 12, color: 'var(--arib-slate)' }}>
+                        {o.note ? (
+                          <div style={{ display: 'flex', gap: 5, alignItems: 'flex-start' }}>
+                            <Info size={13} style={{ color: '#94a3b8', flexShrink: 0, marginTop: 1 }} />
+                            <span>{o.note}</span>
+                          </div>
+                        ) : <span style={{ color: '#cbd5e1' }}>—</span>}
+                      </td>
                       <td style={{ textAlign: 'right' }}>
                         {locked ? (
-                          <span style={{ fontSize: 12, color: 'var(--arib-navy-light)', fontStyle: 'italic' }}>
-                            Protegida
-                          </span>
+                          <span style={{ fontSize: 12, color: 'var(--arib-navy-light)', fontStyle: 'italic' }}>Protegida</span>
                         ) : (
                           <div style={{ display: 'inline-flex', gap: 6 }}>
-                            <button
-                              className="btn ghost"
-                              title="Editar oficina"
-                              onClick={() => setOfficeModal({ ...o })}
-                            >
+                            <button className="btn ghost" title="Editar oficina" onClick={() => setOfficeModal({ ...o })}>
                               <Pencil size={14} />
                             </button>
-                            <button
-                              className="btn danger-soft"
-                              title="Eliminar oficina"
-                              onClick={() => onDeleteOffice(o.id)}
-                            >
+                            <button className="btn danger-soft" title="Eliminar oficina" onClick={() => onDeleteOffice(o.id)}>
                               <Trash2 size={14} />
                             </button>
                           </div>
@@ -333,6 +349,8 @@ export default function CatalogAdminView({
                   <tr key={p.id}>
                     <td>
                       <b style={{ color: 'var(--arib-navy)' }}>{p.name}</b>
+                      <div><Badge tone={p.active === false ? 'neutral' : 'info'}>{p.active === false ? 'Inactivo' : 'Activo'}</Badge></div>
+                      <small>{p.verificationStatus === 'confirmed' ? 'Fuente confirmada' : 'Fuente pendiente de confirmar'}{p.source ? ` · ${p.source}` : ''}{p.validFrom ? ` · Desde ${p.validFrom}` : ''}</small>
                     </td>
                     <td>
                       <Badge tone="neutral">{p.category}</Badge>
@@ -344,7 +362,7 @@ export default function CatalogAdminView({
                       <Badge tone="info">{p.sla} días hábiles</Badge>
                     </td>
                     <td>
-                      {p.monto > 0 ? (
+                      {p.tariffStatus === 'pending' ? <Badge tone="warning">Tarifa pendiente</Badge> : p.monto > 0 ? (
                         <Badge tone="warning">S/ {Number(p.monto).toFixed(2)}</Badge>
                       ) : (
                         <Badge tone="success">Gratuito</Badge>
@@ -389,6 +407,115 @@ export default function CatalogAdminView({
         </>
       )}
 
+      {/* Tab: Feriados */}
+      {tab === 'feriados' && (
+        <Panel
+          title="Calendario de Feriados y Días No Hábiles"
+          subtitle="Los feriados aquí registrados se excluyen automáticamente del cómputo de SLA (días hábiles). Los fines de semana siempre se excluyen. Agrega también los días de cierre institucional propios de ARIB."
+        >
+          <div className="rule-banner" style={{ marginBottom: 16 }}>
+            <Info size={18} style={{ color: '#0369a1', flexShrink: 0 }} />
+            <div>
+              <b>¿Cómo afecta al SLA?</b>
+              <span>
+                El plazo normativo (DS 006-2017-PCM) comienza el día hábil siguiente al de la presentación.
+                Feriados y fines de semana no cuentan. El SLA se pausa además mientras el expediente esté
+                observado o con pago pendiente en Tesorería.
+              </span>
+            </div>
+          </div>
+
+          {/* Formulario de nuevo feriado */}
+          <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', marginBottom: 16, flexWrap: 'wrap' }}>
+            <Field label="Fecha (YYYY-MM-DD)" hint="Formato: 2026-07-28">
+              <input
+                type="date"
+                value={holidayForm.date}
+                onChange={e => setHolidayForm(f => ({ ...f, date: e.target.value }))}
+                style={{ width: 170 }}
+              />
+            </Field>
+            <Field label="Descripción">
+              <input
+                value={holidayForm.name}
+                onChange={e => setHolidayForm(f => ({ ...f, name: e.target.value }))}
+                placeholder="Ej. Fiestas Patrias, Cierre institucional"
+                style={{ width: 280 }}
+              />
+            </Field>
+            <button
+              className="btn primary"
+              disabled={!holidayForm.date || !holidayForm.name.trim()}
+              onClick={() => {
+                if (holidaysList.some(h => h.date === holidayForm.date)) return
+                const updated = [...holidaysList, { date: holidayForm.date, name: holidayForm.name.trim() }]
+                  .sort((a, b) => a.date.localeCompare(b.date))
+                setHolidaysList(updated)
+                onSaveHolidays(updated)
+                setHolidayForm({ date: '', name: '' })
+              }}
+              style={{ marginBottom: 2 }}
+            >
+              <Plus size={15} /> Agregar feriado
+            </button>
+          </div>
+
+          {/* Tabla de feriados */}
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Fecha</th>
+                  <th>Día de la semana</th>
+                  <th>Descripción</th>
+                  <th style={{ textAlign: 'right' }}>Acciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                {holidaysList.length === 0 && (
+                  <tr><td colSpan={4} style={{ textAlign: 'center', padding: 24, color: 'var(--arib-navy-light)', fontSize: 13 }}>Sin feriados registrados.</td></tr>
+                )}
+                {holidaysList.map((h, i) => {
+                  const d = new Date(h.date + 'T12:00:00')
+                  const dow = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'][d.getDay()]
+                  const isWeekend = d.getDay() === 0 || d.getDay() === 6
+                  return (
+                    <tr key={h.date} style={isWeekend ? { background: '#fef9c3' } : {}}>
+                      <td>
+                        <code style={{ background: 'var(--arib-surface-subtle)', padding: '2px 8px', borderRadius: 4, fontSize: 12 }}>
+                          {h.date}
+                        </code>
+                      </td>
+                      <td>
+                        <Badge tone={isWeekend ? 'warning' : 'neutral'}>{dow}</Badge>
+                        {isWeekend && <span style={{ fontSize: 11, color: '#92400e', marginLeft: 6 }}>ya excluido como fin de semana</span>}
+                      </td>
+                      <td style={{ fontSize: 13 }}>{h.name}</td>
+                      <td style={{ textAlign: 'right' }}>
+                        <button
+                          className="btn danger-soft"
+                          title="Eliminar feriado"
+                          onClick={() => {
+                            const updated = holidaysList.filter((_, xi) => xi !== i)
+                            setHolidaysList(updated)
+                            onSaveHolidays(updated)
+                          }}
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+          <div style={{ marginTop: 10, fontSize: 12, color: 'var(--arib-navy-light)' }}>
+            {holidaysList.length} feriado(s) registrado(s) · Los fines de semana siempre se excluyen automáticamente, aunque estén en esta lista.
+          </div>
+        </Panel>
+      )}
+
       {/* Office Modal */}
       <Modal
         open={!!officeModal}
@@ -398,57 +525,36 @@ export default function CatalogAdminView({
         size="md"
         footer={
           <>
-            <button className="btn ghost" onClick={() => setOfficeModal(null)}>
-              Cancelar
-            </button>
-            <button className="btn primary" disabled={!officeModal?.name?.trim()} onClick={saveOffice}>
-              Guardar oficina
-            </button>
+            <button className="btn ghost" onClick={() => setOfficeModal(null)}>Cancelar</button>
+            <button className="btn primary" disabled={!officeModal?.name?.trim()} onClick={saveOffice}>Guardar oficina</button>
           </>
         }
       >
         {officeModal && (
           <div className="form-grid two">
             <Field label="Nombre oficial de la oficina" required>
-              <input
-                value={officeModal.name}
-                onChange={e => setOfficeModal({ ...officeModal, name: e.target.value })}
-                placeholder="Ej. Unidad de Bienestar y Empleabilidad"
-              />
+              <input value={officeModal.name} onChange={e => setOfficeModal({ ...officeModal, name: e.target.value })} placeholder="Ej. Unidad de Bienestar y Empleabilidad" />
             </Field>
             <Field label="Código corto / Siglas" required>
-              <input
-                value={officeModal.short}
-                maxLength={8}
-                onChange={e => setOfficeModal({ ...officeModal, short: e.target.value.toUpperCase() })}
-                placeholder="Ej. UBE"
-              />
+              <input value={officeModal.short} maxLength={8} onChange={e => setOfficeModal({ ...officeModal, short: e.target.value.toUpperCase() })} placeholder="Ej. UBE" />
             </Field>
-            <Field
-              label="Cargo de quien la atiende"
-              hint='Cómo se le llama en la institución (ej. "Administrador", "Encargado", "Jefe de Área"). Se muestra como "[Cargo] de [Oficina]".'
-            >
-              <input
-                value={officeModal.roleTitle || ''}
-                onChange={e => setOfficeModal({ ...officeModal, roleTitle: e.target.value })}
-                placeholder="Encargado"
-              />
+            <Field label="Cargo de quien la atiende" hint='Cómo se le llama en la institución (ej. "Encargado", "Jefe de Área"). Se muestra como "[Cargo] de [Oficina]".'>
+              <input value={officeModal.roleTitle || ''} onChange={e => setOfficeModal({ ...officeModal, roleTitle: e.target.value })} placeholder="Encargado" />
             </Field>
-            <Field label="Color representativo en interfaz" required hint="Se usará en los nodos y badges de ruta">
+            <Field label="Color representativo" hint="Se usa en los nodos y badges de ruta" required>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <input
-                  type="color"
-                  value={officeModal.color}
-                  onChange={e => setOfficeModal({ ...officeModal, color: e.target.value })}
-                  style={{ width: 44, height: 38, padding: 2, cursor: 'pointer', borderRadius: 6 }}
-                />
-                <input
-                  value={officeModal.color}
-                  onChange={e => setOfficeModal({ ...officeModal, color: e.target.value })}
-                  placeholder="#0284c7"
-                  style={{ width: 110 }}
-                />
+                <input type="color" value={officeModal.color} onChange={e => setOfficeModal({ ...officeModal, color: e.target.value })} style={{ width: 44, height: 38, padding: 2, cursor: 'pointer', borderRadius: 6 }} />
+                <input value={officeModal.color} onChange={e => setOfficeModal({ ...officeModal, color: e.target.value })} placeholder="#0284c7" style={{ width: 110 }} />
               </div>
+            </Field>
+            <Field label="Estado" hint="Marcar como provisional mientras la institución no confirme si es una dependencia formal.">
+              <select value={officeModal.provisional ? 'provisional' : 'operativa'} onChange={e => setOfficeModal({ ...officeModal, provisional: e.target.value === 'provisional' })}>
+                <option value="operativa">Operativa (confirmada)</option>
+                <option value="provisional">Provisional (pendiente de validar)</option>
+              </select>
+            </Field>
+            <Field label="Notas de correspondencia" hint="Referencia al Excel o aclaración institucional para esta dependencia.">
+              <input value={officeModal.note || ''} onChange={e => setOfficeModal({ ...officeModal, note: e.target.value })} placeholder="Ej. TUSNE fila 105 · confirmar si es cargo o dependencia" />
             </Field>
           </div>
         )}

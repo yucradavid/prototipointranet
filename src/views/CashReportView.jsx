@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react'
 import { Wallet, Search, Download, Receipt, Landmark, AlertTriangle, ListChecks, ExternalLink, Pencil, History } from 'lucide-react'
 import { Kpi, Panel, Badge, Empty, Field, Modal } from '../components/ui'
-import { procedureById } from '../data/catalogs'
+import { procedureById, procedureForExpediente } from '../data/catalogs'
 import ReciboPagoModal from '../components/ReciboPagoModal'
 
 export default function CashReportView({ items, permissions = [], onEditPayment }) {
@@ -24,7 +24,7 @@ export default function CashReportView({ items, permissions = [], onEditPayment 
   const payments = useMemo(() =>
     items
       .filter(x => x.pago?.estado === 'PAGADO')
-      .map(x => ({ exp: x, pago: x.pago, proc: procedureById(x.procedureId) }))
+      .map(x => ({ exp: x, pago: x.pago, proc: procedureForExpediente(x) }))
       .sort((a, b) => String(b.pago.registradoAt || '').localeCompare(String(a.pago.registradoAt || ''))),
     [items]
   )
@@ -39,11 +39,11 @@ export default function CashReportView({ items, permissions = [], onEditPayment 
   const totalRecaudado = payments.reduce((s, { pago }) => s + Number(pago.monto || 0), 0)
 
   const pending = items.filter(x =>
-    (procedureById(x.procedureId)?.monto || 0) > 0 &&
+    (procedureForExpediente(x)?.monto || 0) > 0 &&
     x.pago?.estado !== 'PAGADO' &&
     x.estado !== 'FINALIZADO'
   )
-  const totalPendiente = pending.reduce((s, x) => s + Number(procedureById(x.procedureId)?.monto || 0), 0)
+  const totalPendiente = pending.reduce((s, x) => s + Number(procedureForExpediente(x)?.monto || 0), 0)
 
   const byProcedure = useMemo(() => {
     const map = {}
