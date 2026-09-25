@@ -60,6 +60,13 @@ export function normalizeProcedure(procedure) {
     requirementsList: [],
     ...procedure,
     tariffStatus: procedure.tariffStatus || (procedure.monto == null ? 'pending' : Number(procedure.monto) === 0 ? 'free' : 'fixed'),
+    // Origen que puede registrar este trámite. Por defecto, igual al comportamiento
+    // histórico: el propio solicitante (portal) o Secretaría (ingreso físico).
+    // Decisión 2026-09-24: el admin puede habilitar además a la propia oficina
+    // especializada (ej. Comisión de Admisión) para iniciar el expediente directamente.
+    allowedCreators: Array.isArray(procedure.allowedCreators) && procedure.allowedCreators.length > 0
+      ? procedure.allowedCreators
+      : ['applicant', 'secretaria'],
   }
   // Migración: si requirementsList está vacío pero hay requires (texto legacy), poblar automáticamente.
   if ((!base.requirementsList || base.requirementsList.length === 0) && base.requires) {
@@ -68,9 +75,21 @@ export function normalizeProcedure(procedure) {
   return base
 }
 
-export function canRequestProcedure(procedure) {
-  return !!procedure && procedure.active !== false && procedure.tariffStatus !== 'pending' &&
+export function getAllowedCreators(procedure) {
+  return Array.isArray(procedure?.allowedCreators) && procedure.allowedCreators.length > 0
+    ? procedure.allowedCreators
+    : ['applicant', 'secretaria']
+}
+
+// `origin` es opcional: sin él, solo valida si el trámite puede solicitarse en general
+// (activo y con tarifa definida). Con él, exige además que ese origen esté habilitado
+// para iniciar este trámite específico (ver `allowedCreators`).
+export function canRequestProcedure(procedure, origin) {
+  const base = !!procedure && procedure.active !== false && procedure.tariffStatus !== 'pending' &&
     procedure.monto != null && Number.isFinite(Number(procedure.monto)) && Number(procedure.monto) >= 0
+  if (!base) return false
+  if (origin) return getAllowedCreators(procedure).includes(origin)
+  return true
 }
 
 export function captureProcedure(procedure, origin = 'registration') {

@@ -37,8 +37,52 @@
   --radius-lg: 16px;
   --radius-xl: 20px;
   --radius-full: 9999px;
-  
+
   --transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* ── Alias semánticos "--arib-*" ──────────────────────────────────────────
+     Usados en decenas de componentes vía style={{color:'var(--arib-...)'}}
+     pero nunca declarados: hasta ahora esos colores no se aplicaban (quedaban
+     `unset`). Los valores de abajo se alinean con .badge.* (la fuente más
+     consistente de color semántico que ya existía en este archivo) en vez de
+     inventar una paleta nueva. */
+  --arib-primary: var(--primary);
+  --arib-primary-subtle: var(--primary-light);
+  --arib-navy: var(--navy);
+  --arib-navy-light: var(--muted);
+  --arib-slate: var(--text-secondary);
+  --arib-border: var(--line);
+  --arib-surface-card: var(--surface);
+  --arib-surface-subtle: var(--surface2);
+  --arib-shadow-md: var(--shadow-md);
+  --arib-info: #0369a1;
+  --arib-info-subtle: #e0f2fe;
+  --arib-success: #059669;
+  --arib-success-subtle: #f0fdf4;
+  --arib-warning: #92400e;
+  --arib-warning-subtle: var(--amber-light);
+  --arib-danger: #dc2626;
+  --arib-danger-subtle: #fee2e2;
+
+  /* ── Escala de espaciado y tipografía ─────────────────────────────────────
+     Aditiva: el resto del archivo sigue con valores literales por ahora.
+     Disponible para CSS nueva y para migrar reglas existentes gradualmente. */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 32px;
+  --space-8: 40px;
+
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-base: 13px;
+  --text-md: 14px;
+  --text-lg: 16px;
+  --text-xl: 20px;
+  --text-2xl: 26px;
 }
 
 * {
@@ -413,8 +457,15 @@ button:disabled {
   width: 100%;
 }
 
+/* Una columna implícita sin dimensión explícita ("grid-template-columns" ausente) usa
+   la función de tamaño "auto", que puede crecer hasta el max-content de sus hijos
+   (un botón con texto largo, un badge, etc.) sin que min-width:0 en los hijos lo evite
+   del todo — así toda la fila (y las demás filas, porque comparten la misma columna)
+   se infla en pantallas angostas. minmax(0, 1fr) fuerza la columna a ocupar siempre
+   el 100% del contenedor, sin importar el contenido. */
 .role-page {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 22px;
 }
 
@@ -986,11 +1037,36 @@ button:disabled {
 /* -------------------------------------------------------------
    MASTER-DETAIL & LISTS
 ------------------------------------------------------------- */
+/* .role-page es a su vez un grid (una sola columna implícita), así que este grid y
+   sus hermanos de abajo son ÍTEMS de ese grid — con min-width:auto por defecto, se
+   niegan a encogerse por debajo del contenido más ancho y desbordan .role-page en
+   pantallas angostas. min-width:0 aquí es lo que realmente permite el colapso a 1
+   columna del breakpoint de 1200px; sin esto, ese breakpoint no alcanza a evitar el
+   desborde horizontal. */
 .master-detail-grid {
   display: grid;
   grid-template-columns: minmax(360px, 0.85fr) minmax(520px, 1.35fr);
   gap: 22px;
   align-items: start;
+  min-width: 0;
+}
+
+/* Envoltorio con ref (para scrollIntoView en móvil) alrededor de un Panel dentro de
+   un grid. .panel tiene overflow:hidden, lo que le da un "min-width:0" implícito como
+   ítem de grid; un <div> plano no lo tiene por defecto y fuerza al grid a ensancharse
+   hasta el contenido — de ahí el min-width:0 explícito aquí. */
+.grid-cell-tight {
+  min-width: 0;
+}
+
+/* Mismo patrón de "lista angosta + panel ancho" que master-detail-grid, para la
+   pantalla de Roles y Permisos (columna fija de roles/oficinas + editor). */
+.role-permissions-grid {
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  gap: 18px;
+  align-items: start;
+  min-width: 0;
 }
 
 .search-mini {
@@ -1368,6 +1444,33 @@ button:disabled {
 /* -------------------------------------------------------------
    ROUTE STRIP & TIMELINE
 ------------------------------------------------------------- */
+/* Botón "Volver a la bandeja" en vistas maestro-detalle: solo tiene sentido cuando
+   la lista y el detalle están apilados (ver @media 850px), así que se oculta en
+   escritorio donde ambos ya están visibles lado a lado. */
+.mobile-only-back {
+  display: none;
+}
+
+.route-strip-wrap {
+  position: relative;
+}
+
+/* Aviso visual de que hay más pasos fuera de la vista (ruta larga cortada en silencio) */
+.route-strip-wrap.has-overflow::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 32px;
+  background: linear-gradient(to right, transparent, var(--surface) 80%);
+  pointer-events: none;
+}
+
+.route-strip-wrap.compact.has-overflow::after {
+  width: 20px;
+}
+
 .route-strip {
   display: flex;
   align-items: center;
@@ -1509,6 +1612,8 @@ button:disabled {
   display: flex;
   gap: 4px;
   width: max-content;
+  max-width: 100%;
+  overflow-x: auto;
 }
 
 .segmented button {
@@ -1520,6 +1625,8 @@ button:disabled {
   font-size: 12px;
   font-weight: 700;
   transition: var(--transition);
+  flex: none;
+  white-space: nowrap;
 }
 
 .segmented button.active {
@@ -1984,6 +2091,7 @@ button:disabled {
   display: grid;
   grid-template-columns: 1.5fr 0.8fr;
   gap: 22px;
+  min-width: 0;
 }
 
 .monitor-list {
@@ -2166,6 +2274,7 @@ button:disabled {
   grid-template-columns: 320px minmax(0, 1fr);
   gap: 22px;
   align-items: start;
+  min-width: 0;
 }
 
 .procedure-list {
@@ -2535,6 +2644,7 @@ button:disabled {
   grid-template-columns: minmax(0, 1.7fr) minmax(320px, 0.75fr);
   gap: 22px;
   align-items: start;
+  min-width: 0;
 }
 
 .table-wrap {
@@ -2627,6 +2737,7 @@ button:disabled {
   grid-template-columns: 380px 1fr;
   gap: 22px;
   align-items: start;
+  min-width: 0;
 }
 
 /* -------------------------------------------------------------
@@ -3148,7 +3259,8 @@ button:disabled {
   .admin-two-col,
   .workflow-admin-grid,
   .book-layout,
-  .tracking-grid {
+  .tracking-grid,
+  .role-permissions-grid {
     grid-template-columns: 1fr;
   }
   .kpi-grid,
@@ -3182,6 +3294,9 @@ button:disabled {
   .mobile-close,
   .hamb {
     display: block;
+  }
+  .mobile-only-back {
+    display: inline-flex;
   }
   .main-area {
     margin-left: 0;

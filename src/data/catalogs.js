@@ -26,19 +26,18 @@ export const DEFAULT_OFFICES = [
   {id:'secretaria_academica', name:'Secretaría Académica',   short:'SA',    color:'#06b6d4', roleTitle:'Encargado',
    note:'TUSNE: "Secretaría Académica". Aprueba y emite constancias, certificados y trámites de egreso.'},
 
-  // ── Oficinas provisionales (pendientes de validación institucional) ────────
-  // Aparecen en el TUSNE 2026 pero aún no está confirmado si son oficinas
-  // separadas, cargos dentro de una dependencia existente, o comisiones temporales.
-  // Usar provisional:true para mostrar advertencia en la UI. No asignar a rutas
-  // de producción hasta confirmar con la institución.
-  {id:'fedatario',            name:'Fedatario de Unidad Administrativa', short:'FED',  color:'#94a3b8', roleTitle:'Fedatario', provisional:true,
-   note:'TUSNE fila 105: atiende autenticación de documentos. Confirmar si es un cargo dentro de Unidad Administrativa o una oficina independiente.'},
-  {id:'coordinacion_academica', name:'Coordinación de Área Académica',  short:'CAA',  color:'#a78bfa', roleTitle:'Coordinador', provisional:true,
-   note:'TUSNE filas 129/131: término de recuperación y evaluación extraordinaria. Confirmar si coincide con Unidad Académica o Jefatura Académica.'},
-  {id:'formacion_continua',   name:'Unidad de Formación Continua',      short:'UFC',  color:'#f97316', roleTitle:'Jefe de Unidad', provisional:true,
-   note:'TUSNE filas 184–190: inicio de cursos virtuales, presenciales y de actualización. Confirmar si existe como unidad formal.'},
-  {id:'comision_admision',    name:'Comisión de Admisión',              short:'ADM',  color:'#64748b', roleTitle:'Presidente de Comisión', provisional:true,
-   note:'TUSNE filas 9/17: aprueba inscripciones para examen de admisión. Confirmar si es permanente o se activa por campaña.'},
+  // ── Oficinas confirmadas por la institución (2026-09-24) ───────────────────
+  // Aparecían en el TUSNE 2026 sin confirmar si eran oficinas separadas o cargos
+  // dentro de otra dependencia. El Líder Técnico confirmó las 4 como oficinas
+  // reales con bandeja propia; quedan sin `provisional` desde esa fecha.
+  {id:'fedatario',            name:'Fedatario de Unidad Administrativa', short:'FED',  color:'#94a3b8', roleTitle:'Fedatario',
+   note:'TUSNE fila 105: atiende autenticación de documentos.'},
+  {id:'coordinacion_academica', name:'Coordinación de Área Académica',  short:'CAA',  color:'#a78bfa', roleTitle:'Coordinador',
+   note:'TUSNE filas 129/131: término de recuperación y evaluación extraordinaria.'},
+  {id:'formacion_continua',   name:'Unidad de Formación Continua',      short:'UFC',  color:'#f97316', roleTitle:'Jefe de Unidad',
+   note:'TUSNE filas 184–190: inicio de cursos virtuales, presenciales y de actualización.'},
+  {id:'comision_admision',    name:'Comisión de Admisión',              short:'ADM',  color:'#64748b', roleTitle:'Presidente de Comisión',
+   note:'TUSNE filas 9/17: aprueba inscripciones para examen de admisión.'},
 ]
 
 // ─── Catálogo de trámites ────────────────────────────────────────────────────
@@ -294,12 +293,10 @@ export const DEFAULT_PROCEDURES = [
       {label:'Documento original', type:'document', required:true},
       {label:'Copia del documento original', type:'document', required:true},
       {label:'Recibo de pago por "Autenticación de Documentos"', type:'payment', required:true},
-      {label:'Presentación ante Fedatario de Unidad Administrativa', type:'condition', required:true,
-       note:'Confirmar con institución si el Fedatario es cargo dentro de Unidad Administrativa o dependencia separada.'},
+      {label:'Presentación ante Fedatario de Unidad Administrativa', type:'condition', required:true},
     ],
-    sla:1, route:['tesoreria','fedatario'], monto:5, tariffStatus:'fixed', active:false,
-    source:'TUSNE 2026 · filas 105–108', validFrom:'', verificationStatus:'pending',
-    // INACTIVO: ruta incluye 'fedatario' que es provisional; activar cuando se confirme la dependencia.
+    sla:1, route:['tesoreria','fedatario'], monto:5, tariffStatus:'fixed', active:true,
+    source:'TUSNE 2026 · filas 105–108', validFrom:'', verificationStatus:'confirmed',
   },
   {
     id:'cambio_nombre_apellido',    name:'Cambio de nombre y apellido',
@@ -713,6 +710,7 @@ export const PERMISSIONS_CATALOG = [
   {key:'case.proveido', label:'Emitir proveído'},
   {key:'route.choose', label:'Definir ruta de oficinas'},
   {key:'case.view', label:'Ver detalle de expedientes'},
+  {key:'case.originate', label:'Iniciar expedientes directamente desde la oficina'},
   {key:'case.attend', label:'Atender y completar pasos en oficina'},
   {key:'case.observe', label:'Observar expedientes'},
   {key:'case.forward', label:'Redirigir a otra oficina'},
@@ -730,8 +728,8 @@ export const DEFAULT_ROLE_PERMISSIONS = {
   docente:{views:['portal','tracking'], permissions:['request.create','request.view_own','request.correct']},
   secretaria:{views:['work','book','tracking'], permissions:['case.register','case.receive','case.close','book.view']},
   direccion:{views:['work','tracking'], permissions:['case.proveido','route.choose','case.view']},
-  oficina:{views:['work','tracking'], permissions:['case.attend','case.observe','case.forward','case.pay']},
-  admin:{views:['control','workflow','catalog','book','caja','oficinas','tracking'], permissions:['system.manage','workflow.manage','users.manage','audit.view','reports.view','case.attend','case.observe','case.forward','case.pay','case.pay_edit']},
+  oficina:{views:['work','tracking'], permissions:['case.attend','case.observe','case.forward','case.pay','case.originate']},
+  admin:{views:['control','workflow','catalog','book','caja','oficinas','tracking'], permissions:['system.manage','workflow.manage','users.manage','audit.view','reports.view','case.attend','case.observe','case.forward','case.pay','case.pay_edit','case.originate']},
 }
 
 // Igual que OFFICES/PROCEDURES: el prototipo permite a Administrador reconfigurar
@@ -742,6 +740,21 @@ export function setRolePermissionsCatalog(v){ ROLE_PERMISSIONS = v }
 export const roleViews = role => ROLE_PERMISSIONS[role]?.views || []
 export const rolePerms = role => ROLE_PERMISSIONS[role]?.permissions || []
 export const hasPermission = (role,perm) => rolePerms(role).includes(perm)
+
+// ─── Permisos por oficina (decisión 2026-09-24) ───────────────────────────────
+// Todas las oficinas comparten el rol 'oficina' y, por defecto, sus mismos permisos
+// y vistas. El Administrador puede además personalizar una oficina específica (ej.
+// que solo Tesorería vea "Caja y pagos" y registre pagos, o que solo Comisión de
+// Admisión pueda iniciar expedientes). DEFAULT_OFFICE_PERMISSIONS vacío = ninguna
+// oficina tiene override; todas heredan el rol 'oficina' hasta que el admin
+// personalice una explícitamente.
+export const DEFAULT_OFFICE_PERMISSIONS = {}
+export let OFFICE_PERMISSIONS = JSON.parse(JSON.stringify(DEFAULT_OFFICE_PERMISSIONS))
+export function setOfficePermissionsCatalog(v){ OFFICE_PERMISSIONS = v }
+// true si el admin personalizó esta oficina; false si hereda el rol 'oficina' completo.
+export const officeHasCustomPermissions = officeId => !!OFFICE_PERMISSIONS[officeId]
+export const officeViews = officeId => OFFICE_PERMISSIONS[officeId]?.views || roleViews('oficina')
+export const officePerms = officeId => OFFICE_PERMISSIONS[officeId]?.permissions || rolePerms('oficina')
 
 // ─── Feriados y días hábiles ─────────────────────────────────────────────────
 // Lista de feriados nacionales del Perú 2026 más los días de cierre institucional.

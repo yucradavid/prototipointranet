@@ -2,6 +2,17 @@
 
 Fecha del análisis inicial: 2026-09-21. Este documento incluye ahora seguimiento de implementación.
 
+## Decisiones confirmadas (2026-09-24)
+
+Respondidas directamente por el Líder Técnico (David Yucra Mamani), no aún por documento formal de la institución — quedan como decisión de proyecto para destrabar el prototipo:
+
+- **TUSNE vigente**: confirmado como catálogo de tarifas aplicable a ARIB para 2026.
+- **Oficinas provisionales**: las 4 quedaron confirmadas como oficinas reales con bandeja propia — Fedatario de Unidad Administrativa, Coordinación de Área Académica, Unidad de Formación Continua, Comisión de Admisión. Ya no llevan el flag `provisional` en `src/data/catalogs.js`. Como consecuencia, `autenticacion_documentos` quedó activo (dependía de Fedatario).
+- **Certificado modular**: confirma ruta por Jefatura Académica (se mantiene como estaba).
+- **Grupo 5 (admisión, matrícula, cursos)**: SÍ deben generar expediente en Mesa de Partes. Aún no se incorporan al catálogo porque el Excel tiene SLA en rango o vacío (30–50 días; F184–F192 vacíos) y tarifas variables por tipo de solicitante/cantidad — falta esa data puntual, no la decisión de alcance.
+- **Pagos**: la validación final la controla la parte administrativa (rol Admin, permiso `case.pay_edit`), no se escala a la institución — ya coincide con el modelo construido.
+- **Nueva capacidad — origen del registro**: se agregó `allowedCreators` por trámite (quién puede iniciar el expediente: solicitante, Secretaría, y/o la oficina especializada de su ruta). Ver `docs/HANDOFF_FRONTEND.md` §4c y `docs/HANDOFF_BACKEND.md` §3.9. Ningún trámite tiene hoy `'office'` habilitado — la capacidad queda lista para cuando se incorpore el Grupo 5.
+
 ## Estado después de la revisión técnica
 
 Esta sección prevalece sobre las marcas históricas de la lista inferior. La revisión corrigió la migración que eliminaba trámites y mezclaba requisitos, la exigencia de documentos opcionales/condicionales, el cálculo de vencimiento al inicio del último día y la reaparición de feriados borrados. Las rutas guardadas conservan su versión y nota originales.
@@ -16,22 +27,19 @@ La [matriz completa](MATRIZ_SERVICIOS_TUPA_TUSNE.md) contiene los 58 servicios d
 
 ## Prioridad 0: decisiones institucionales
 
-Estas preguntas están preparadas para el ingeniero; no se ha enviado ningún mensaje.
+Resueltas directamente con el Líder Técnico el 2026-09-24 (ver sección anterior): vigencia del TUSNE, las 4 oficinas provisionales, ruta del certificado modular, alcance del Grupo 5, y validación de pagos. Quedan como decisión de proyecto, no como confirmación documental formal de la institución — pendiente aún obtener resolución/fecha de aprobación por escrito si se requiere para auditoría.
+
+Preguntas normativas que siguen sin respuesta, listas para plantear directamente:
 
 | Prioridad | Pregunta concreta | Evidencia y efecto |
 |---|---|---|
-| Antes de publicar tarifas | ¿La hoja TUSNE es el catálogo aplicable a ARIB y cuál es su documento y fecha de aprobación? ¿TUPA es solo referencia? | TUSNE!A1 identifica ARIB; TUPA!A1 identifica De los Andes. Evita mezclar instituciones. |
-| Antes de publicar tarifas | ¿Los importes en soles son los aplicables a 2026? | Ambas hojas indican UIT de 2025; no recalcular precios automáticamente por UIT. |
-| Primer grupo | ¿Secretaría de Dirección corresponde a Mesa de Partes del prototipo? ¿Todo expediente pasa por Dirección? | El sistema lo exige; el Excel también registra servicios que comienzan en Caja u otras unidades. |
-| Primer grupo | ¿Quién valida el comprobante y en qué momento? | El portal solicita comprobante antes del envío; el motor registra el pago dentro del paso de Tesorería. Validación no equivale a cobrar nuevamente. |
-| Primer grupo | ¿Desde cuándo se cuentan los días hábiles y qué circunstancias suspenden el plazo? | El motor actual suma días calendario y contempla pausas; falta confirmar reglas institucionales. |
-| Certificados | ¿Se mantiene Jefatura Académica en la ruta del certificado modular? | La ruta inicial del sistema la incluye; el Excel identifica Secretaría Académica como aprobación/término. |
+| Antes de publicar tarifas | ¿Los importes en soles son los aplicables a 2026, o hay que actualizarlos? | Ambas hojas indican UIT de 2025; no recalcular precios automáticamente por UIT. |
+| Primer grupo | ¿Desde cuándo se cuentan los días hábiles y qué circunstancias suspenden el plazo? | El motor actual suma días hábiles y contempla pausas; falta confirmar reglas institucionales exactas. |
 | Certificado de estudios | ¿Cuál es el concepto correcto de su recibo? | TUSNE!C112 menciona autenticación de documentos. |
 | Matrícula | ¿Cómo se aplican S/ 0, S/ 30 y S/ 45 en matrícula de primeros puestos? | TUSNE!C30:I32; no interpretar todo el servicio como gratuito. |
-| Admisión y otros | ¿Qué significa 30–50 días y qué plazos corresponden a cursos y copia de sílabos? | F9/F17 contienen rango; F184/F187/F190/F192 están vacíos. |
+| Admisión y otros | ¿Qué significa 30–50 días y qué plazos corresponden a cursos y copia de sílabos? | F9/F17 contienen rango; F184/F187/F190/F192 están vacíos. Bloquea incorporar el Grupo 5 al catálogo aunque el alcance ya esté confirmado. |
 | Titulación | ¿Se requieren dos o cuatro fotografías? ¿Cómo se acreditan pagos asociados y requisitos condicionales? | C165 dice CUATRO (02); C167:C171 contiene conceptos y condiciones diferentes. |
 | Regularización | ¿Existe ya la Directiva indicada para el ítem 34? | A214 es una nota de la fuente; no demuestra que esa disposición esté aprobada. |
-| Servicios posteriores | ¿Qué servicios generan expediente y cuáles son operaciones de Caja, matrícula, admisión o formación continua? | Define el alcance sin convertir Mesa de Partes en otro módulo completo. |
 
 ## Prioridad 1: primer grupo de configuración
 
@@ -73,15 +81,16 @@ El FUT ya completado debe satisfacer el requisito FUT; el comprobante debe adjun
 - [x] Incorporar grupo 2: `const_no_adeudar`, `const_disponibilidad_vacante`, `const_tercio_quinto`, `const_primera_matricula`, `otras_constancias`, `copia_expediente_estudiante`, `record_academico`, `autenticacion_documentos` (inactivo — Fedatario provisional), `cambio_nombre_apellido`, `ficha_evaluacion_efsrt`, `copia_recibo_ingresos`, `copia_silabos`. Rutas seed publicadas.
 - [x] Incorporar grupo 3: `reserva_matricula`, `licencia_estudios`, `reincorporacion_estudios`, `traslado_ingreso`, `traslado_salida`, `traslado_interno`, `convalidacion_unidad`, `convalidacion_externa`, `convalidacion_efsrt`, `regularizacion_tramite`. Rutas seed publicadas con notas de validación.
 - [x] Incorporar grupo 4: `recuperacion_unidades`, `evaluacion_extraordinaria`, `trabajo_aplicacion`, `tramite_titulo`, `duplicado_diploma_titulo`, `duplicado_acta_titulacion`, `examen_suficiencia_idiomas`, `cert_idiomas_duplicado`, `copia_acta_sustentacion`. Requisitos condicionales modelados con `required:'conditional'` y `note`.
-- [ ] Incorporar grupo 5 según alcance confirmado: admisión, matrícula, cursos, servicios de Caja directa, impresiones y alquileres. Pendiente de decisión institucional sobre qué servicios generan expediente.
-- [ ] Resolver plazos vacíos o en rango antes de activar alertas para admisión y cursos (TUSNE F9/F17 con rango 30–50 días; F184–F192 vacíos).
-- [ ] Confirmar oficinas provisionales con la institución y activar los trámites marcados como `active:false` que las usan.
+- [ ] Incorporar grupo 5: alcance confirmado el 2026-09-24 (admisión, matrícula y cursos SÍ generan expediente). Falta solo la data puntual de SLA/tarifas del Excel para poder cargarlo (ver ítem siguiente); ya existe la capacidad de origen por oficina (`allowedCreators`) para cuando se agregue.
+- [ ] Resolver plazos vacíos o en rango antes de cargar el catálogo del grupo 5 (TUSNE F9/F17 con rango 30–50 días; F184–F192 vacíos).
+- [x] Confirmar oficinas provisionales con la institución — 2026-09-24: las 4 confirmadas como oficinas reales. `autenticacion_documentos` activado.
 - [ ] Agregar tarifas por beneficiario y cantidad (cursos virtuales/presenciales con 3 precios, matrícula de primeros puestos con 3 montos, copia de sílabos por unidad).
 - [x] Actualizar guía de demostración y documentos de frontend/backend conforme al comportamiento actual.
+- [x] Agregar `allowedCreators` por trámite (quién puede iniciar el expediente: solicitante, Secretaría, oficina especializada) — decisión 2026-09-24, ver `ProcedureFormModal.jsx` y `OfficeWorkbenchView.jsx`.
 
-## Oficinas a resolver
+## Oficinas — resuelto
 
-El catálogo inicial ya contiene Mesa de Partes, Dirección, Tesorería, Biblioteca, EFSRT, Jefatura Académica, Unidad Académica y Secretaría Académica. El Excel menciona además Comisión de Admisión, Fedatario de Unidad Administrativa, Coordinación de Área Académica y Unidad de Formación Continua. Confirmar si son oficinas, cargos o responsabilidades antes de crearlas. Unidad Administrativa y Caja requieren una correspondencia explícita con Tesorería.
+El catálogo contiene Mesa de Partes, Dirección, Tesorería, Biblioteca, EFSRT, Jefatura Académica, Unidad Académica y Secretaría Académica, más las 4 confirmadas el 2026-09-24: Comisión de Admisión, Fedatario de Unidad Administrativa, Coordinación de Área Académica y Unidad de Formación Continua. Ninguna lleva ya el flag `provisional`. Sigue pendiente solo la correspondencia explícita de "Unidad Administrativa" y "Caja" con Tesorería si el Excel las vuelve a mencionar en el Grupo 5.
 
 ## Validación proporcional
 

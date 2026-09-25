@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { createVirtual,registerVirtual,issueProveido,observeAtOffice,correctObservation,completeOfficeStep,finalizeCase,validateWorkflowRoute,slaInfo,canDeleteOffice,canDeleteProcedure,authenticate,authenticateByEmail,redirectToOffice,routeProgress,validateRolePermissions,registerPayment,requiresPayment,editPayment } from '../src/workflowEngine.js'
-import { procedureById } from '../src/data/catalogs.js'
+import { createVirtual,createPhysical,registerVirtual,issueProveido,observeAtOffice,correctObservation,completeOfficeStep,finalizeCase,validateWorkflowRoute,slaInfo,canDeleteOffice,canDeleteProcedure,authenticate,authenticateByEmail,redirectToOffice,routeProgress,validateRolePermissions,validateOfficePermissions,registerPayment,requiresPayment,editPayment } from '../src/workflowEngine.js'
+import { procedureById, DEFAULT_PROCEDURES, setProceduresCatalog, officeViews, officePerms, setOfficePermissionsCatalog, DEFAULT_OFFICE_PERMISSIONS, ROLE_PERMISSIONS } from '../src/data/catalogs.js'
 
 const base={procedureId:'const_biblioteca',ownerProfile:'estudiante',solicitante:'Demo',asunto:'Constancia',adjuntos:[],numeroFolios:1,fecha:'01/01/2026',hora:'08:00'}
 
@@ -201,4 +201,40 @@ test('validateRolePermissions exige al menos una vista y protege el acceso del a
  assert.ok(validateRolePermissions('secretaria',{views:[],permissions:[]}).length>0)
  assert.ok(validateRolePermissions('admin',{views:['control','workflow'],permissions:[]}).length>0)
  assert.deepEqual(validateRolePermissions('admin',{views:['control','catalog'],permissions:[]}),[])
+})
+
+test('el origen de registro respeta quién puede iniciar cada trámite (allowedCreators)',()=>{
+ try{
+  const base2={...base,procedureId:'const_biblioteca'}
+  // Por defecto (sin allowedCreators explícito) solo el solicitante y Secretaría pueden iniciar.
+  setProceduresCatalog(DEFAULT_PROCEDURES.map(p=>p.id==='const_biblioteca'?{...p,allowedCreators:undefined}:p))
+  assert.doesNotThrow(()=>createVirtual(base2,7001,'08:00'))
+  assert.doesNotThrow(()=>createPhysical(base2,7002,'08:00',null,'secretaria'))
+  assert.throws(()=>createPhysical(base2,7003,'08:00',null,'office'),/no admite ser iniciado/)
+
+  // El admin habilita explícitamente a la oficina especializada para otro trámite.
+  setProceduresCatalog(DEFAULT_PROCEDURES.map(p=>p.id==='const_biblioteca'?{...p,allowedCreators:['secretaria','office']}:p))
+  assert.throws(()=>createVirtual(base2,7004,'08:00'),/no admite ser iniciado/)
+  const originated=createPhysical(base2,7005,'08:00',null,'office')
+  assert.equal(originated.canal,'Oficina')
+  assert.equal(originated.historial[0].actor,'Oficina')
+ }finally{setProceduresCatalog(DEFAULT_PROCEDURES)}
+})
+
+test('una oficina hereda el rol Oficina salvo que el admin la personalice',()=>{
+ try{
+  assert.deepEqual(officeViews('biblioteca'),ROLE_PERMISSIONS.oficina.views)
+  assert.deepEqual(officePerms('biblioteca'),ROLE_PERMISSIONS.oficina.permissions)
+  setOfficePermissionsCatalog({tesoreria:{views:['work'],permissions:['case.attend','case.pay']}})
+  assert.deepEqual(officeViews('tesoreria'),['work'])
+  assert.deepEqual(officePerms('tesoreria'),['case.attend','case.pay'])
+  // Otra oficina sin override propio no se ve afectada por la personalización de Tesorería.
+  assert.deepEqual(officeViews('biblioteca'),ROLE_PERMISSIONS.oficina.views)
+  assert.deepEqual(officePerms('biblioteca'),ROLE_PERMISSIONS.oficina.permissions)
+ }finally{setOfficePermissionsCatalog(DEFAULT_OFFICE_PERMISSIONS)}
+})
+
+test('validateOfficePermissions exige al menos una vista, sin el bloqueo especial del rol admin',()=>{
+ assert.deepEqual(validateOfficePermissions({views:['work'],permissions:[]}),[])
+ assert.ok(validateOfficePermissions({views:[],permissions:[]}).length>0)
 })

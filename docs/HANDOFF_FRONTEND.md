@@ -67,7 +67,26 @@ Los ~38 trámites del catálogo (TUSNE 2026, grupos 1–4) ya no describen sus r
 
 Pórtenlo tal cual: la validación de "puedo enviar" no es solo "hay algo en el input", es la función `requirementSatisfied`/`requirementIncluded` de `src/models/procedure.js`, y debe ejecutarse igual en el cliente (UX) y en el backend (autoridad real).
 
-También hay trámites con `active: false` (ej. `autenticacion_documentos`, `copia_silabos`) — deben desaparecer del selector del portal (`canRequestProcedure`) pero seguir siendo visibles/editables en `CatalogAdminView.jsx` para el administrador.
+También hay trámites con `active: false` (ej. `copia_silabos`) — deben desaparecer del selector del portal (`canRequestProcedure`) pero seguir siendo visibles/editables en `CatalogAdminView.jsx` para el administrador.
+
+## 4c. Quién puede iniciar cada trámite (`allowedCreators`)
+
+Decisión del 2026-09-24: además de tarifa/requisitos, cada trámite declara en `allowedCreators` qué orígenes pueden generar su expediente — un subconjunto de `'applicant'` (portal), `'secretaria'` (ingreso físico) y `'office'` (la propia oficina especializada de la ruta, ej. Comisión de Admisión para trámites de admisión). Por defecto es `['applicant','secretaria']`, igual que el comportamiento histórico.
+
+- `canRequestProcedure(procedure, origin)` en `src/models/procedure.js` ahora acepta un segundo parámetro opcional: sin él, solo valida que el trámite esté activo y con tarifa definida; con él, exige además que ese origen esté en `allowedCreators`. El portal filtra con `'applicant'`, Secretaría con `'secretaria'`.
+- `ProcedureFormModal.jsx` tiene un nuevo bloque de checkboxes ("¿Quién puede iniciar este trámite?") para que el administrador configure `allowedCreators` por trámite.
+- `OfficeWorkbenchView.jsx` agrega un botón "Nueva solicitud" (permiso `case.originate`), visible solo si existe al menos un trámite con `'office'` en `allowedCreators` **y** cuya ruta publicada incluya a esa oficina — una oficina no debe poder iniciar el trámite de otra. Reutiliza el mismo formulario tipo FUT que ya existe en `SecretariaWorkbenchView.jsx`, y llama a `onCreatePhysical(data, 'office')` en vez de con el origen por defecto.
+- Hoy ningún trámite del catálogo tiene `'office'` habilitado — la capacidad está lista para cuando se agreguen los trámites de admisión/matrícula/cursos (Grupo 5, aún pendiente de datos de SLA/tarifa).
+
+## 4d. Permisos por oficina específica (decisión 2026-09-24)
+
+Antes, las 12 oficinas reales compartían un único rol `oficina` con los mismos permisos y vistas. Ahora el Administrador puede además personalizar una oficina puntual (ej. que solo Tesorería vea "Caja y pagos", o que Biblioteca no pueda redirigir expedientes) sin afectar a las demás.
+
+- `RolePermissionsView.jsx` (dentro de "Usuarios y catálogos" → pestaña "Roles y Permisos") ahora tiene dos paneles en la columna izquierda: "Roles del sistema" (como antes) y un nuevo "Personalizar por oficina" que lista las oficinas operativas. Seleccionar una oficina muestra sus vistas/permisos efectivos — heredados del rol `oficina`, o su propio override si ya fue personalizada (badge "Personalizado").
+- Marcar o desmarcar cualquier casilla sobre una oficina sin personalizar la personaliza automáticamente (no hace falta un paso previo de "activar personalización"); un botón "Restablecer al rol Oficina" la vuelve a hacer heredar del rol compartido.
+- `src/data/catalogs.js`: `officeViews(officeId)` / `officePerms(officeId)` resuelven el efectivo (override si existe, si no el rol `oficina`) — úsenlas en vez de leer `role_permissions` directo para cualquier cuenta de oficina. `officeHasCustomPermissions(officeId)` dice si tiene override propio.
+- `App.jsx`: `myViews`/`myPermissions` ya usan `officeViews(officeId)`/`officePerms(officeId)` en vez del rol cuando `profileId === 'oficina'` — repliquen esa misma resolución (override de oficina antes que rol) al calcular qué puede ver/hacer el usuario autenticado.
+- Verificado en navegador: personalizar Tesorería para quitarle "Redirigir a otra oficina" hace que ese botón desaparezca de su propia bandeja real (`OfficeWorkbenchView.jsx`) sin afectar a otras oficinas, y "Restablecer al rol Oficina" revierte el cambio.
 
 ## 5. Contrato de API a consumir
 
@@ -98,11 +117,15 @@ POST   /api/users/import-csv              (admin)
 
 GET    /api/role-permissions
 PUT    /api/role-permissions/{role}       (admin)  { views[], permissions[] }
+GET    /api/office-permissions            devuelve solo las oficinas con override propio
+PUT    /api/office-permissions/{officeId} (admin)  { views[], permissions[] } — crea o reemplaza el override
+DELETE /api/office-permissions/{officeId} (admin)  quita el override; la oficina vuelve a heredar el rol Oficina
 
 GET    /api/expedientes                   ?estado=&oficina=&search=
 GET    /api/expedientes/{id}
 POST   /api/expedientes/virtual           (estudiante/docente)
 POST   /api/expedientes/fisico            (secretaria)
+POST   /api/expedientes/oficina           (oficina, con permiso "Iniciar expedientes directamente desde la oficina")
 POST   /api/expedientes/{id}/registrar-virtual  (secretaria)
 POST   /api/expedientes/{id}/proveido           (direccion)     { proveido, routePlan[] }
 POST   /api/expedientes/{id}/observar           (oficina)       { text }
@@ -126,7 +149,7 @@ El backend va a devolver los mismos mensajes que hoy lanza `src/workflowEngine.j
 
 - Login por usuario/contraseña y "Google institucional" (simulado en el prototipo; en producción puede ser un SSO real o seguir siendo un login por correo institucional validado contra la base de datos).
 - Guardar el token (Sanctum) y adjuntarlo a cada request.
-- **El rol y las vistas/permisos deben venir del backend en el login**, no seguir siendo un array hardcodeado en el cliente como hoy (`DEFAULT_ROLE_PERMISSIONS` en `src/data/catalogs.js`). Usen esa constante solo como referencia de qué forma debe tener la respuesta.
+- **El rol y las vistas/permisos deben venir del backend en el login**, no seguir siendo un array hardcodeado en el cliente como hoy (`DEFAULT_ROLE_PERMISSIONS` en `src/data/catalogs.js`). Usen esa constante solo como referencia de qué forma debe tener la respuesta. Para una cuenta de oficina, la respuesta de login debe traer ya el efectivo resuelto (override de `office_permissions` si existe, si no el rol `oficina`) — el cliente no debe tener que combinar ambos.
 - Persistencia de sesión: el prototipo guarda la sesión en `localStorage` (`loadSession`/`saveSession` en `src/repositories/prototypeRepository.js`) para no perder el login al refrescar la página — repliquen esa misma UX (por ejemplo, guardando el token y revalidándolo al cargar).
 - El login por oficina ("acceso directo por oficina" en la pantalla de login) debe seguir siendo cuentas reales, una por oficina — no un selector genérico. Ver `LoginView.jsx` para la UI ya resuelta.
 

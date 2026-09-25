@@ -1,13 +1,29 @@
-import React, { useMemo, useState } from 'react'
+import React, { useMemo, useState, useRef } from 'react'
 import {
-  Building2, Search, CheckCircle2, AlertTriangle, ArrowRight, UploadCloud,
+  Building2, Search, CheckCircle2, AlertTriangle, ArrowRight, ArrowLeft, UploadCloud,
   Clock3, Shuffle, FileText, UserRound, ArrowLeftRight, Check, CornerDownRight,
-  ShieldAlert, Sparkles, MessageSquare, ExternalLink, Wallet, Receipt, History
+  ShieldAlert, Sparkles, MessageSquare, ExternalLink, Wallet, Receipt, History, Plus
 } from 'lucide-react'
 import { Panel, StatusBadge, SlaBadge, Badge, Empty, RouteStrip, Timeline, FileList, Modal, Field, RequirementsBlock } from '../components/ui'
-import { officeName, procedureById, procedureForExpediente } from '../data/catalogs'
+import { officeName, procedureById, procedureForExpediente, PROGRAMS, CONDITIONS } from '../data/catalogs'
+import { canRequestProcedure } from '../models/procedure.js'
 import ReciboPagoModal from '../components/ReciboPagoModal'
+import CargoModal from '../components/CargoModal'
 import { fileToCompressedDataUrl, isDataUrl } from '../utils/imageUpload'
+
+const originateBase = {
+  procedureId: '',
+  solicitante: '',
+  condicion: 'Estudiante',
+  programa: PROGRAMS[0],
+  dni: '',
+  celular: '',
+  correo: '',
+  direccion: 'Ichuña, Moquegua',
+  fundamento: '',
+  numeroFolios: 1,
+  adjuntos: []
+}
 
 const PAYMENT_METHODS = ['Yape / Plin', 'Tarjeta / POS', 'Depósito bancario', 'Transferencia', 'Efectivo en caja']
 const todayPE = () => new Intl.DateTimeFormat('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date())
@@ -25,9 +41,42 @@ const QUICK_RESULTS = [
   'Paso operativo completado satisfactoriamente.'
 ]
 
-export default function OfficeWorkbenchView({ officeId, items, offices, permissions=[], onObserve, onComplete, onRedirect, onRegisterPayment }) {
+export default function OfficeWorkbenchView({ officeId, items, offices, procedures=[], workflows={}, permissions=[], onObserve, onComplete, onRedirect, onRegisterPayment, onCreatePhysical }) {
   const can=perm=>permissions.includes(perm)
+  const listPanelRef=useRef(null)
+  const detailPanelRef=useRef(null)
   const [selectedId, setSelectedId] = useState(null)
+  // En celular la lista y el detalle quedan uno debajo del otro en el mismo scroll;
+  // sin esto, elegir un caso no da ninguna señal de a dónde fue el contenido.
+  const selectCase=id=>{
+    setSelectedId(id)
+    if(window.innerWidth<=850) detailPanelRef.current?.scrollIntoView({behavior:'smooth',block:'start'})
+  }
+  const backToList=()=>listPanelRef.current?.scrollIntoView({behavior:'smooth',block:'start'})
+  const [originateOpen, setOriginateOpen] = useState(false)
+  const [originateForm, setOriginateForm] = useState(originateBase)
+  const [originateError, setOriginateError] = useState('')
+  const [originateCargo, setOriginateCargo] = useState(null)
+
+  // Trámites que esta oficina puede iniciar directamente en nombre del solicitante:
+  // el admin habilitó el origen 'office' para ese trámite Y esta oficina forma parte
+  // de su ruta publicada (una oficina no debe poder iniciar el trámite de otra).
+  const originableProcedures = useMemo(() =>
+    procedures.filter(p => canRequestProcedure(p, 'office') && (workflows[p.id]?.route || []).includes(officeId)),
+    [procedures, workflows, officeId]
+  )
+
+  const submitOriginate = () => {
+    const p = procedureById(originateForm.procedureId)
+    if (!canRequestProcedure(p, 'office')) { setOriginateError('Selecciona un trámite disponible para esta oficina.'); return }
+    if (!originateForm.solicitante.trim()) { setOriginateError('Ingresa el nombre del solicitante.'); return }
+    const exp = onCreatePhysical({ ...originateForm, asunto: p.name, ownerProfile: originateForm.condicion === 'Docente' ? 'docente' : 'estudiante' }, 'office')
+    if (!exp) return
+    setOriginateOpen(false)
+    setOriginateForm(originateBase)
+    setOriginateError('')
+    setOriginateCargo(exp)
+  }
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState('ALL') // ALL | EN_OFICINA | OBSERVADO
   const [observeOpen, setObserveOpen] = useState(false)
@@ -174,12 +223,18 @@ export default function OfficeWorkbenchView({ officeId, items, offices, permissi
               <span>observados</span>
             </div>
           )}
+          {can('case.originate') && originableProcedures.length > 0 && (
+            <button className="btn primary" onClick={() => setOriginateOpen(true)}>
+              <Plus size={16} /> Nueva solicitud
+            </button>
+          )}
         </div>
       </div>
 
       {/* Main Grid */}
       <div className="master-detail-grid">
         {/* Left: Queue List */}
+        <div ref={listPanelRef} className="grid-cell-tight">
         <Panel
           title="Bandeja de expedientes"
           subtitle="Paso asignado a esta oficina para evaluación y respuesta."
@@ -231,7 +286,7 @@ export default function OfficeWorkbenchView({ officeId, items, offices, permissi
                   <button
                     key={x.id}
                     className={`case-item ${selected?.id === x.id ? 'active' : ''}`}
-                    onClick={() => setSelectedId(x.id)}
+                    onClick={() => selectCase(x.id)}
                   >
                     <div
                       className="case-icon office"
@@ -272,11 +327,18 @@ export default function OfficeWorkbenchView({ officeId, items, offices, permissi
             )}
           </div>
         </Panel>
+        </div>
 
         {/* Right: Selected Case Details & Actions */}
+        <div ref={detailPanelRef} className="grid-cell-tight">
         <Panel
           title={selected ? `EXP ${selected.numero} · ${selected.asunto}` : 'Detalle de atención'}
           subtitle={selected ? `Proveído de Dirección: "${selected.proveido || 'Conforme a la norma.'}"` : 'Selecciona un expediente para evaluar y resolver.'}
+          actions={selected && (
+            <button className="btn ghost mobile-only-back" onClick={backToList}>
+              <ArrowLeft size={14} /> Volver a la bandeja
+            </button>
+          )}
         >
           {selected ? (
             <div className="case-detail">
@@ -553,6 +615,7 @@ export default function OfficeWorkbenchView({ officeId, items, offices, permissi
             />
           )}
         </Panel>
+        </div>
       </div>
 
       {/* Observation Modal */}
@@ -722,6 +785,61 @@ export default function OfficeWorkbenchView({ officeId, items, offices, permissi
       </Modal>
 
       <ReciboPagoModal exp={reciboExp} onClose={() => setReciboExp(null)} />
+
+      {/* Nueva solicitud iniciada directamente por la oficina especializada */}
+      <Modal
+        open={originateOpen}
+        onClose={() => setOriginateOpen(false)}
+        title={`Nueva solicitud desde ${officeName(officeId)}`}
+        subtitle="Registra el expediente en nombre del solicitante. Se remitirá obligatoriamente a Dirección para su proveído, igual que cualquier otro ingreso."
+        size="lg"
+        footer={
+          <>
+            <button className="btn ghost" onClick={() => setOriginateOpen(false)}>Cancelar</button>
+            <button className="btn primary" disabled={!originateForm.solicitante.trim() || !originateForm.procedureId} onClick={submitOriginate}>
+              <FileText size={16} /> Registrar y remitir a Dirección
+            </button>
+          </>
+        }
+      >
+        {originateError && <div className="login-error" style={{ marginBottom: 10 }}>{originateError}</div>}
+        <div className="form-grid two">
+          <Field label="Trámite" required>
+            <select value={originateForm.procedureId} onChange={e => setOriginateForm({ ...originateForm, procedureId: e.target.value })}>
+              <option value="">Selecciona un trámite disponible</option>
+              {originableProcedures.map(p => <option value={p.id} key={p.id}>{p.name} (SLA: {p.sla} días)</option>)}
+            </select>
+          </Field>
+          <Field label="Número de folios" required>
+            <input type="number" min="1" value={originateForm.numeroFolios} onChange={e => setOriginateForm({ ...originateForm, numeroFolios: Number(e.target.value) })} />
+          </Field>
+          <Field label="Apellidos y nombres / Razón social" required>
+            <input value={originateForm.solicitante} onChange={e => setOriginateForm({ ...originateForm, solicitante: e.target.value })} placeholder="Nombre completo del solicitante" />
+          </Field>
+          <Field label="DNI / RUC">
+            <input value={originateForm.dni} onChange={e => setOriginateForm({ ...originateForm, dni: e.target.value })} placeholder="Número de documento" />
+          </Field>
+          <Field label="Condición institucional">
+            <select value={originateForm.condicion} onChange={e => setOriginateForm({ ...originateForm, condicion: e.target.value })}>
+              {CONDITIONS.map(x => <option key={x}>{x}</option>)}
+            </select>
+          </Field>
+          <Field label="Programa de estudios">
+            <select value={originateForm.programa} onChange={e => setOriginateForm({ ...originateForm, programa: e.target.value })}>
+              {PROGRAMS.map(x => <option key={x}>{x}</option>)}
+            </select>
+          </Field>
+        </div>
+        <Field label="Fundamento / Resumen del pedido">
+          <textarea rows="4" value={originateForm.fundamento} onChange={e => setOriginateForm({ ...originateForm, fundamento: e.target.value })} placeholder="Resumen del pedido atendido directamente por esta oficina…" />
+        </Field>
+        <div className="form-note">
+          <CheckCircle2 size={16} color="#10b981" />
+          <span>El número correlativo de expediente, fecha y hora se generarán automáticamente al registrar.</span>
+        </div>
+      </Modal>
+
+      <CargoModal exp={originateCargo} onClose={() => setOriginateCargo(null)} />
     </div>
   )
 }

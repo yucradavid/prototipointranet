@@ -36,9 +36,11 @@ export function countWorkdays(from, to){
   return count
 }
 
-function registrationTerms(data){
+function registrationTerms(data,origin){
   const proc=procedureById(data.procedureId)
-  if(!canRequestProcedure(proc)) throw new Error('El trámite está inactivo o tiene una tarifa pendiente de definir.')
+  if(!canRequestProcedure(proc,origin)) throw new Error(origin&&proc&&proc.active!==false&&proc.tariffStatus!=='pending'
+    ? 'Este trámite no admite ser iniciado desde este origen.'
+    : 'El trámite está inactivo o tiene una tarifa pendiente de definir.')
   return captureProcedure(proc)
 }
 
@@ -46,7 +48,7 @@ const event=(actor,action,text,time)=>({time,actor,action,text})
 
 export function createVirtual(data, numero, time, actor){
   const tracking=`ARIB-${numero}`
-  return {...data,procedureSnapshot:registrationTerms(data),id:`sol-${Date.now()}`,numero,tracking,canal:'Virtual',tipoDocumento:'FUT',estado:'SOLICITUD_VIRTUAL',oficinaActual:'mesa_partes',firmaSecretaria:'',vistoBuenoDireccion:'',proveido:'',routePlan:[],routeIndex:-1,routeVersion:null,respuesta:'',documentoRespuesta:'',observation:null,pago:null,pauseStartedAt:null,slaPausedMs:0,historial:[event(actor||'Solicitante','Envío virtual',`Envió FUT virtual. N.° de expediente ${numero} asignado. Pendiente de validación en Mesa de Partes.`,time)]}
+  return {...data,procedureSnapshot:registrationTerms(data,'applicant'),id:`sol-${Date.now()}`,numero,tracking,canal:'Virtual',tipoDocumento:'FUT',estado:'SOLICITUD_VIRTUAL',oficinaActual:'mesa_partes',firmaSecretaria:'',vistoBuenoDireccion:'',proveido:'',routePlan:[],routeIndex:-1,routeVersion:null,respuesta:'',documentoRespuesta:'',observation:null,pago:null,pauseStartedAt:null,slaPausedMs:0,historial:[event(actor||'Solicitante','Envío virtual',`Envió FUT virtual. N.° de expediente ${numero} asignado. Pendiente de validación en Mesa de Partes.`,time)]}
 }
 
 export function registerVirtual(exp,time,actor){
@@ -54,8 +56,18 @@ export function registerVirtual(exp,time,actor){
   return {...exp,estado:'EN_DIRECCION',oficinaActual:'direccion',firmaSecretaria:'Secretaría · recepción conforme',historial:[...exp.historial,event(actor||'Secretaría','Registro',`Validó el expediente N.° ${exp.numero}. Por regla crítica, fue remitido obligatoriamente a Dirección.`,time)]}
 }
 
-export function createPhysical(data,numero,time,actor){
-  return {...data,procedureSnapshot:registrationTerms(data),id:`exp-${numero}`,numero,tracking:`ARIB-${numero}`,canal:'Físico',tipoDocumento:'FUT',estado:'EN_DIRECCION',oficinaActual:'direccion',firmaSecretaria:'Secretaría · recepción conforme',vistoBuenoDireccion:'',proveido:'',routePlan:[],routeIndex:-1,routeVersion:null,respuesta:'',documentoRespuesta:'',observation:null,pago:null,pauseStartedAt:null,slaPausedMs:0,historial:[event(actor||'Secretaría','Registro',`Registró expediente físico N.° ${numero} y lo remitió obligatoriamente a Dirección.`,time)]}
+// `origin` distingue quién está registrando: 'secretaria' (ingreso físico por ventanilla,
+// comportamiento histórico) u 'office' (la propia oficina especializada inicia el
+// expediente en nombre del solicitante, ej. Comisión de Admisión). Ambos generan un
+// expediente físico idéntico en estructura; solo cambia la validación de origen permitido
+// y el canal/actor que queda registrado en el historial.
+export function createPhysical(data,numero,time,actor,origin='secretaria'){
+  const canal=origin==='office'?'Oficina':'Físico'
+  const actorLabel=actor||(origin==='office'?'Oficina':'Secretaría')
+  const historialTexto=origin==='office'
+    ? `La oficina inició expediente N.° ${numero} y lo remitió obligatoriamente a Dirección.`
+    : `Registró expediente físico N.° ${numero} y lo remitió obligatoriamente a Dirección.`
+  return {...data,procedureSnapshot:registrationTerms(data,origin),id:`exp-${numero}`,numero,tracking:`ARIB-${numero}`,canal,tipoDocumento:'FUT',estado:'EN_DIRECCION',oficinaActual:'direccion',firmaSecretaria:'Secretaría · recepción conforme',vistoBuenoDireccion:'',proveido:'',routePlan:[],routeIndex:-1,routeVersion:null,respuesta:'',documentoRespuesta:'',observation:null,pago:null,pauseStartedAt:null,slaPausedMs:0,historial:[event(actorLabel,'Registro',historialTexto,time)]}
 }
 
 export function issueProveido(exp,{proveido,routePlan,routeVersion},time,actor){
@@ -214,6 +226,17 @@ export function validateRolePermissions(role,data){
   const errors=[]
   if(!Array.isArray(data?.views)||data.views.length===0) errors.push('El rol debe conservar acceso a al menos una vista.')
   if(role==='admin'&&!(data?.views||[]).includes('catalog')) errors.push('El rol Administrador no puede perder el acceso a "Usuarios y catálogos": es el único lugar para revertir cambios de permisos.')
+  return errors
+}
+
+// Personalización por oficina (ver OFFICE_PERMISSIONS en catalogs.js): a diferencia del
+// rol Administrador, una oficina sin ninguna vista no bloquea a nadie de revertir el
+// cambio (el Administrador siempre puede editarla desde "Roles y Permisos"), pero se
+// exige igual al menos una vista para que la cuenta de esa oficina no quede inservible
+// por error.
+export function validateOfficePermissions(data){
+  const errors=[]
+  if(!Array.isArray(data?.views)||data.views.length===0) errors.push('La oficina debe conservar acceso a al menos una vista.')
   return errors
 }
 

@@ -1,5 +1,5 @@
 import { seedExpedientes, seedWorkflowConfigs, seedUsers } from '../data/seed.js'
-import { DEFAULT_OFFICES, DEFAULT_PROCEDURES, DEFAULT_ROLE_PERMISSIONS, DEFAULT_PAYMENT_INFO, DEFAULT_HOLIDAYS } from '../data/catalogs.js'
+import { DEFAULT_OFFICES, DEFAULT_PROCEDURES, DEFAULT_ROLE_PERMISSIONS, DEFAULT_OFFICE_PERMISSIONS, DEFAULT_PAYMENT_INFO, DEFAULT_HOLIDAYS } from '../data/catalogs.js'
 import { normalizeProcedure, preserveProcedureTerms } from '../models/procedure.js'
 const K_EXP='arib-master-expedientes-v1'
 const K_WF='arib-master-workflows-v1'
@@ -7,6 +7,7 @@ const K_OFFICES='arib-master-offices-v1'
 const K_PROCEDURES='arib-master-procedures-v1'
 const K_USERS='arib-master-users-v1'
 const K_ROLE_PERMISSIONS='arib-master-role-permissions-v1'
+const K_OFFICE_PERMISSIONS='arib-master-office-permissions-v1'
 const K_PAYMENT_INFO='arib-master-payment-info-v1'
 const K_AUDIT_LOG='arib-master-audit-log-v1'
 const K_SESSION='arib-master-session-v1'
@@ -125,10 +126,19 @@ export function loadRolePermissions(){
     // Migración: como control adicional, solo Administrador puede corregir el monto de un
     // pago ya registrado. Se agrega exclusivamente a admin; oficina (Tesorería) nunca lo recibe.
     if(stored.admin&&!stored.admin.permissions.includes('case.pay_edit'))stored.admin.permissions=[...stored.admin.permissions,'case.pay_edit']
+    // Migración: 2026-09-24, permite que la propia oficina especializada inicie un
+    // expediente (ej. Comisión de Admisión), solo para los trámites que el admin habilite.
+    if(stored.oficina&&!stored.oficina.permissions.includes('case.originate'))stored.oficina.permissions=[...stored.oficina.permissions,'case.originate']
+    if(stored.admin&&!stored.admin.permissions.includes('case.originate'))stored.admin.permissions=[...stored.admin.permissions,'case.originate']
     return stored
   }catch{return clone(DEFAULT_ROLE_PERMISSIONS)}
 }
 export function saveRolePermissions(v){try{localStorage.setItem(K_ROLE_PERMISSIONS,JSON.stringify(v))}catch{}}
+// Override de permisos por oficina específica, encima del rol compartido 'oficina'
+// (ver OFFICE_PERMISSIONS en catalogs.js). Una oficina ausente del objeto guardado
+// simplemente hereda el rol; no hace falta migración de campos nuevos aquí todavía.
+export function loadOfficePermissions(){try{return JSON.parse(localStorage.getItem(K_OFFICE_PERMISSIONS))||clone(DEFAULT_OFFICE_PERMISSIONS)}catch{return clone(DEFAULT_OFFICE_PERMISSIONS)}}
+export function saveOfficePermissions(v){try{localStorage.setItem(K_OFFICE_PERMISSIONS,JSON.stringify(v))}catch{}}
 export function loadPaymentInfo(){try{return JSON.parse(localStorage.getItem(K_PAYMENT_INFO))||clone(DEFAULT_PAYMENT_INFO)}catch{return clone(DEFAULT_PAYMENT_INFO)}}
 export function savePaymentInfo(v){try{localStorage.setItem(K_PAYMENT_INFO,JSON.stringify(v))}catch{}}
 export function loadHolidays(){
@@ -141,7 +151,7 @@ export function loadHolidays(){
 export function saveHolidays(v){try{localStorage.setItem(K_HOLIDAYS,JSON.stringify(v))}catch{}}
 export function loadAuditLog(){try{return JSON.parse(localStorage.getItem(K_AUDIT_LOG))||[]}catch{return []}}
 export function saveAuditLog(v){try{localStorage.setItem(K_AUDIT_LOG,JSON.stringify(v.slice(0,MAX_AUDIT_LOG)))}catch{}}
-export function resetAll(){try{localStorage.removeItem(K_EXP);localStorage.removeItem(K_WF);localStorage.removeItem(K_OFFICES);localStorage.removeItem(K_PROCEDURES);localStorage.removeItem(K_USERS);localStorage.removeItem(K_ROLE_PERMISSIONS);localStorage.removeItem(K_PAYMENT_INFO);localStorage.removeItem(K_AUDIT_LOG);localStorage.removeItem(K_HOLIDAYS)}catch{};return {expedientes:preserveProcedureTerms(clone(seedExpedientes),DEFAULT_PROCEDURES),workflows:clone(seedWorkflowConfigs),offices:clone(DEFAULT_OFFICES),procedures:clone(DEFAULT_PROCEDURES).map(normalizeProcedure),users:clone(seedUsers),rolePermissions:clone(DEFAULT_ROLE_PERMISSIONS),paymentInfo:clone(DEFAULT_PAYMENT_INFO),holidays:clone(DEFAULT_HOLIDAYS),auditLog:[]}}
+export function resetAll(){try{localStorage.removeItem(K_EXP);localStorage.removeItem(K_WF);localStorage.removeItem(K_OFFICES);localStorage.removeItem(K_PROCEDURES);localStorage.removeItem(K_USERS);localStorage.removeItem(K_ROLE_PERMISSIONS);localStorage.removeItem(K_OFFICE_PERMISSIONS);localStorage.removeItem(K_PAYMENT_INFO);localStorage.removeItem(K_AUDIT_LOG);localStorage.removeItem(K_HOLIDAYS)}catch{};return {expedientes:preserveProcedureTerms(clone(seedExpedientes),DEFAULT_PROCEDURES),workflows:clone(seedWorkflowConfigs),offices:clone(DEFAULT_OFFICES),procedures:clone(DEFAULT_PROCEDURES).map(normalizeProcedure),users:clone(seedUsers),rolePermissions:clone(DEFAULT_ROLE_PERMISSIONS),officePermissions:clone(DEFAULT_OFFICE_PERMISSIONS),paymentInfo:clone(DEFAULT_PAYMENT_INFO),holidays:clone(DEFAULT_HOLIDAYS),auditLog:[]}}
 export function loadSession(){try{return JSON.parse(localStorage.getItem(K_SESSION))||null}catch{return null}}
 export function saveSession(v){try{localStorage.setItem(K_SESSION,JSON.stringify(v))}catch{}}
 export function clearSession(){try{localStorage.removeItem(K_SESSION)}catch{}}

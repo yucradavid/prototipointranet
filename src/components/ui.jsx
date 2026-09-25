@@ -285,6 +285,8 @@ export function Timeline({items=[]}){
 }
 
 export function RouteStrip({exp,compact=false}){
+  const stripRef=React.useRef(null)
+  const [overflowing,setOverflowing]=React.useState(false)
   const route=exp?.routePlan||[]
   const steps=[
     {id:'mesa_partes',label:'Mesa de Partes'},
@@ -302,9 +304,20 @@ export function RouteStrip({exp,compact=false}){
       : exp?.estado==='EN_OFICINA'
         ? 'En atención'
         : ''
+  // Con rutas largas (4+ oficinas) la tira no entra en pantalla y se corta en silencio.
+  // El desvanecido a la derecha (.has-overflow) avisa que hay más pasos con scroll horizontal.
+  React.useEffect(()=>{
+    const el=stripRef.current
+    if(!el)return
+    const check=()=>setOverflowing(el.scrollWidth>el.clientWidth+2)
+    check()
+    window.addEventListener('resize',check)
+    return ()=>window.removeEventListener('resize',check)
+  },[steps.length,compact])
   return (
     <>
-      <div className={`route-strip ${compact?'compact':''}`}>
+      <div className={`route-strip-wrap ${overflowing?'has-overflow':''} ${compact?'compact':''}`}>
+        <div ref={stripRef} className={`route-strip ${compact?'compact':''}`}>
         {steps.map((s,i)=>{
           const done=exp?.estado==='FINALIZADO'||i<active
           const current=i===active
@@ -320,6 +333,7 @@ export function RouteStrip({exp,compact=false}){
             </React.Fragment>
           )
         })}
+        </div>
       </div>
       {!compact&&currentNote&&(
         <p style={{margin:'6px 0 0',fontSize:12,color:'var(--arib-navy-light)',display:'flex',alignItems:'center',gap:5}}>

@@ -17,10 +17,10 @@ const WorkflowAdminView=lazy(()=>import('./views/WorkflowAdminView'))
 const CatalogAdminView=lazy(()=>import('./views/CatalogAdminView'))
 const BookAuditView=lazy(()=>import('./views/BookAuditView'))
 const CashReportView=lazy(()=>import('./views/CashReportView'))
-import { slugify, setOfficesCatalog, setProceduresCatalog, setRolePermissionsCatalog, setPaymentInfoCatalog, setHolidaysCatalog, officeName, procedureById, procedureForExpediente, roleViews, rolePerms, roleLabel, PROFILES } from './data/catalogs'
+import { slugify, setOfficesCatalog, setProceduresCatalog, setRolePermissionsCatalog, setOfficePermissionsCatalog, setPaymentInfoCatalog, setHolidaysCatalog, officeName, procedureById, procedureForExpediente, roleViews, rolePerms, officeViews, officePerms, roleLabel, PROFILES } from './data/catalogs'
 import { parseStudentsCsv } from './data/userImport'
-import { loadExpedientes,saveExpedientes,loadWorkflows,saveWorkflows,loadOffices,saveOffices,loadProcedures,saveProcedures,loadUsers,saveUsers,loadRolePermissions,saveRolePermissions,loadPaymentInfo,savePaymentInfo,loadHolidays,saveHolidays,loadAuditLog,saveAuditLog,loadSession,saveSession,clearSession,resetAll,nextNumero } from './repositories/prototypeRepository'
-import { createVirtual,registerVirtual,createPhysical,issueProveido,observeAtOffice,correctObservation,completeOfficeStep,finalizeCase,validateWorkflowRoute,validateRolePermissions,slaInfo,canDeleteOffice,canDeleteProcedure,authenticate,authenticateByEmail,redirectToOffice,registerPayment,editPayment } from './workflowEngine'
+import { loadExpedientes,saveExpedientes,loadWorkflows,saveWorkflows,loadOffices,saveOffices,loadProcedures,saveProcedures,loadUsers,saveUsers,loadRolePermissions,saveRolePermissions,loadOfficePermissions,saveOfficePermissions,loadPaymentInfo,savePaymentInfo,loadHolidays,saveHolidays,loadAuditLog,saveAuditLog,loadSession,saveSession,clearSession,resetAll,nextNumero } from './repositories/prototypeRepository'
+import { createVirtual,registerVirtual,createPhysical,issueProveido,observeAtOffice,correctObservation,completeOfficeStep,finalizeCase,validateWorkflowRoute,validateRolePermissions,validateOfficePermissions,slaInfo,canDeleteOffice,canDeleteProcedure,authenticate,authenticateByEmail,redirectToOffice,registerPayment,editPayment } from './workflowEngine'
 
 const today=()=>new Intl.DateTimeFormat('es-PE',{day:'2-digit',month:'2-digit',year:'numeric'}).format(new Date())
 const time=()=>new Date().toLocaleTimeString('es-PE',{hour:'2-digit',minute:'2-digit',hour12:false})
@@ -29,6 +29,7 @@ export default function App(){
   const [items,setItems]=useState(()=>loadExpedientes()),[workflows,setWorkflows]=useState(()=>loadWorkflows()),[toast,setToast]=useState({message:'',type:'success'})
   const [offices,setOffices]=useState(()=>loadOffices()),[procedures,setProcedures]=useState(()=>loadProcedures()),[users,setUsers]=useState(()=>loadUsers())
   const [rolePermissions,setRolePermissions]=useState(()=>loadRolePermissions())
+  const [officePermissions,setOfficePermissions]=useState(()=>loadOfficePermissions())
   const [paymentInfo,setPaymentInfo]=useState(()=>loadPaymentInfo())
   const [holidays,setHolidays]=useState(()=>loadHolidays())
   const [auditLog,setAuditLog]=useState(()=>loadAuditLog())
@@ -47,6 +48,7 @@ export default function App(){
   useEffect(()=>{saveProcedures(procedures);setProceduresCatalog(procedures)},[procedures])
   useEffect(()=>saveUsers(users),[users])
   useEffect(()=>{saveRolePermissions(rolePermissions);setRolePermissionsCatalog(rolePermissions)},[rolePermissions])
+  useEffect(()=>{saveOfficePermissions(officePermissions);setOfficePermissionsCatalog(officePermissions)},[officePermissions])
   useEffect(()=>{savePaymentInfo(paymentInfo);setPaymentInfoCatalog(paymentInfo)},[paymentInfo])
   useEffect(()=>{saveHolidays(holidays);setHolidaysCatalog(holidays)},[holidays])
   useEffect(()=>saveAuditLog(auditLog),[auditLog])
@@ -70,7 +72,7 @@ export default function App(){
   }
   const onCreateVirtual=data=>{const n=nextNumero(items);try{const exp=createVirtual({...data,fecha:today(),hora:time()},n,time(),actorLabel());setItems(c=>[exp,...c]);notify(`Solicitud enviada. N.° de expediente ${n}`);return exp}catch(err){notify(err.message,'error');return null}}
   const onRegisterVirtual=exp=>{const result=update(exp.id,x=>registerVirtual(x,time(),actorLabel()));if(result)notify(`Expediente ${result.numero} validado y enviado a Dirección`);return result}
-  const onCreatePhysical=data=>{const n=nextNumero(items);try{const exp=createPhysical({...data,fecha:today(),hora:time()},n,time(),actorLabel());setItems(c=>[exp,...c]);notify(`Expediente físico ${n} registrado y remitido a Dirección`);return exp}catch(err){notify(err.message,'error');return null}}
+  const onCreatePhysical=(data,origin='secretaria')=>{const n=nextNumero(items);try{const exp=createPhysical({...data,fecha:today(),hora:time()},n,time(),actorLabel(),origin);setItems(c=>[exp,...c]);notify(origin==='office'?`Expediente ${n} iniciado por la oficina y remitido a Dirección`:`Expediente físico ${n} registrado y remitido a Dirección`);return exp}catch(err){notify(err.message,'error');return null}}
   const onProveido=(exp,payload)=>{update(exp.id,x=>issueProveido(x,payload,time(),actorLabel()));notify(`Proveído emitido. Ruta activada para EXP ${exp.numero}`)}
   const onObserve=(exp,payload)=>{update(exp.id,x=>observeAtOffice(x,payload,time(),actorLabel()));notify(`Observación enviada al solicitante`)}
   const onCorrect=(exp,payload)=>{update(exp.id,x=>correctObservation(x,payload,time(),actorLabel()));notify(`Subsanación registrada y devuelta a la oficina observadora`)}
@@ -206,13 +208,27 @@ export default function App(){
     return true
   }
 
+  const onSaveOfficePermissions=(officeIdArg,data)=>{
+    const errs=validateOfficePermissions(data)
+    if(errs.length){notify(errs[0],'error');return false}
+    setOfficePermissions(curr=>({...curr,[officeIdArg]:{views:[...data.views],permissions:[...data.permissions]}}))
+    logAction('Permisos de oficina personalizados',`${officeName(officeIdArg)}: ${data.views.length} vista(s), ${data.permissions.length} permiso(s)`)
+    notify(`Permisos de ${officeName(officeIdArg)} actualizados`)
+    return true
+  }
+  const onResetOfficePermissions=officeIdArg=>{
+    setOfficePermissions(curr=>{const next={...curr};delete next[officeIdArg];return next})
+    logAction('Permisos de oficina restablecidos',`${officeName(officeIdArg)} vuelve a heredar el rol Oficina`)
+    notify(`${officeName(officeIdArg)} vuelve a usar los permisos del rol Oficina`)
+  }
+
   const onSavePaymentInfo=data=>{setPaymentInfo(data);logAction('Datos de pago institucional actualizados',data.yape||data.cuenta||'');notify('Datos de pago institucional actualizados')}
   const onSaveHolidays=list=>{setHolidays(list);logAction('Feriados actualizados',`${list.length} fecha(s)`);notify('Calendario de feriados actualizado')}
 
   const reset=()=>{
     askConfirm('¿Restaurar todos los datos del prototipo? Se perderá todo lo creado o modificado en esta demo.',()=>{
       const r=resetAll()
-      setItems(r.expedientes);setWorkflows(r.workflows);setOffices(r.offices);setProcedures(r.procedures);setUsers(r.users);setRolePermissions(r.rolePermissions);setPaymentInfo(r.paymentInfo);setHolidays(r.holidays);setAuditLog(r.auditLog)
+      setItems(r.expedientes);setWorkflows(r.workflows);setOffices(r.offices);setProcedures(r.procedures);setUsers(r.users);setRolePermissions(r.rolePermissions);setOfficePermissions(r.officePermissions);setPaymentInfo(r.paymentInfo);setHolidays(r.holidays);setAuditLog(r.auditLog)
       setCurrentUser(null);setProfileId('admin');setActiveView('control')
       setConfirmState(null)
       notify('Prototipo restaurado')
@@ -236,19 +252,22 @@ export default function App(){
     return []
   },[items,profileId,officeId,currentUser])
 
-  const myViews=roleViews(profileId)
-  const myPermissions=rolePerms(profileId)
+  // Una oficina hereda las vistas/permisos del rol 'oficina' salvo que el Administrador
+  // la haya personalizado explícitamente en officePermissions (ver catalogs.js §Permisos
+  // por oficina). El resto de perfiles sigue usando el permiso por rol de siempre.
+  const myViews=profileId==='oficina'?officeViews(officeId):roleViews(profileId)
+  const myPermissions=profileId==='oficina'?officePerms(officeId):rolePerms(profileId)
   useEffect(()=>{
     if(!loggedIn||!myViews.length)return
     if(!myViews.includes(activeView))setActiveView(myViews[0])
-  },[loggedIn,profileId,rolePermissions])
+  },[loggedIn,profileId,officeId,rolePermissions,officePermissions])
 
   let content
   if(profileId==='estudiante'||profileId==='docente') content=activeView==='tracking'?<TrackingView items={items} profileId={profileId} currentUser={currentUser}/>:<ApplicantPortalView profileId={profileId} items={items} procedures={procedures} currentUser={currentUser} permissions={myPermissions} onCreateVirtual={onCreateVirtual} onCorrect={onCorrect}/>
   else if(profileId==='secretaria') content=activeView==='book'?<BookAuditView items={items}/>:activeView==='tracking'?<TrackingView items={items}/>:<SecretariaWorkbenchView items={items} procedures={procedures} permissions={myPermissions} onRegisterVirtual={onRegisterVirtual} onCreatePhysical={onCreatePhysical} onFinalize={onFinalize}/>
   else if(profileId==='direccion') content=activeView==='book'?<BookAuditView items={items}/>:activeView==='tracking'?<TrackingView items={items}/>:<DireccionWorkbenchView items={items} workflows={workflows} offices={offices} permissions={myPermissions} onProveido={onProveido}/>
-  else if(profileId==='oficina') content=activeView==='book'?<BookAuditView items={items}/>:activeView==='tracking'?<TrackingView items={items}/>:<OfficeWorkbenchView officeId={officeId} items={items} offices={offices} permissions={myPermissions} onObserve={onObserve} onComplete={onComplete} onRedirect={onRedirect} onRegisterPayment={onRegisterPayment}/>
-  else content=activeView==='workflow'?<WorkflowAdminView workflows={workflows} offices={offices} procedures={procedures} onPublish={onPublishWorkflow} onSaveProcedure={onSaveProcedure} onDeleteProcedure={onDeleteProcedure}/>:activeView==='catalog'?<CatalogAdminView offices={offices} procedures={procedures} users={users} rolePermissions={rolePermissions} paymentInfo={paymentInfo} holidays={holidays} auditLog={auditLog} onSaveOffice={onSaveOffice} onDeleteOffice={onDeleteOffice} onSaveProcedure={onSaveProcedure} onDeleteProcedure={onDeleteProcedure} onSaveUser={onSaveUser} onDeleteUser={onDeleteUser} onResetPassword={onResetPassword} onToggleUserActive={onToggleUserActive} onBulkSetActive={onBulkSetActive} onImportStudents={onImportStudents} onSaveRolePermissions={onSaveRolePermissions} onSavePaymentInfo={onSavePaymentInfo} onSaveHolidays={onSaveHolidays}/>:activeView==='book'?<BookAuditView items={items}/>:activeView==='caja'?<CashReportView items={items} permissions={myPermissions} onEditPayment={onEditPayment}/>:activeView==='oficinas'?<AdminOfficeOperationsView officeId={officeId} setOfficeId={setOfficeId} items={items} offices={offices} permissions={myPermissions} onObserve={onObserve} onComplete={onComplete} onRedirect={onRedirect} onRegisterPayment={onRegisterPayment}/>:activeView==='tracking'?<TrackingView items={items}/>:<AdminControlView items={items} offices={offices} setActiveView={setActiveView}/>
+  else if(profileId==='oficina') content=activeView==='book'?<BookAuditView items={items}/>:activeView==='tracking'?<TrackingView items={items}/>:<OfficeWorkbenchView officeId={officeId} items={items} offices={offices} procedures={procedures} workflows={workflows} permissions={myPermissions} onObserve={onObserve} onComplete={onComplete} onRedirect={onRedirect} onRegisterPayment={onRegisterPayment} onCreatePhysical={onCreatePhysical}/>
+  else content=activeView==='workflow'?<WorkflowAdminView workflows={workflows} offices={offices} procedures={procedures} onPublish={onPublishWorkflow} onSaveProcedure={onSaveProcedure} onDeleteProcedure={onDeleteProcedure}/>:activeView==='catalog'?<CatalogAdminView offices={offices} procedures={procedures} users={users} rolePermissions={rolePermissions} officePermissions={officePermissions} paymentInfo={paymentInfo} holidays={holidays} auditLog={auditLog} onSaveOffice={onSaveOffice} onDeleteOffice={onDeleteOffice} onSaveProcedure={onSaveProcedure} onDeleteProcedure={onDeleteProcedure} onSaveUser={onSaveUser} onDeleteUser={onDeleteUser} onResetPassword={onResetPassword} onToggleUserActive={onToggleUserActive} onBulkSetActive={onBulkSetActive} onImportStudents={onImportStudents} onSaveRolePermissions={onSaveRolePermissions} onSaveOfficePermissions={onSaveOfficePermissions} onResetOfficePermissions={onResetOfficePermissions} onSavePaymentInfo={onSavePaymentInfo} onSaveHolidays={onSaveHolidays}/>:activeView==='book'?<BookAuditView items={items}/>:activeView==='caja'?<CashReportView items={items} permissions={myPermissions} onEditPayment={onEditPayment}/>:activeView==='oficinas'?<AdminOfficeOperationsView officeId={officeId} setOfficeId={setOfficeId} items={items} offices={offices} procedures={procedures} workflows={workflows} permissions={myPermissions} onObserve={onObserve} onComplete={onComplete} onRedirect={onRedirect} onRegisterPayment={onRegisterPayment} onCreatePhysical={onCreatePhysical}/>:activeView==='tracking'?<TrackingView items={items}/>:<AdminControlView items={items} offices={offices} setActiveView={setActiveView}/>
 
   const login=(id)=>{setCurrentUser(null);setProfileId(id);setActiveView(id==='admin'?'control':id==='estudiante'||id==='docente'?'portal':'work');setLoggedIn(true)}
   const loginAsUser=user=>{

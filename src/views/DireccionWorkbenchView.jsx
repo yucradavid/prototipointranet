@@ -1,5 +1,5 @@
-import React,{useMemo,useState} from 'react'
-import { Search, Stamp, Route, Plus, X, ArrowRight, ShieldCheck, Clock3, Sparkles, CheckCircle2, ChevronRight, FileCheck } from 'lucide-react'
+import React,{useMemo,useState,useRef} from 'react'
+import { Search, Stamp, Route, Plus, X, ArrowRight, ArrowLeft, ShieldCheck, Clock3, Sparkles, CheckCircle2, ChevronRight, FileCheck } from 'lucide-react'
 import { Panel, StatusBadge, SlaBadge, Badge, Empty, RouteStrip, Timeline, FileList } from '../components/ui'
 import { officeName, procedureById, procedureForExpediente } from '../data/catalogs'
 
@@ -10,6 +10,13 @@ export default function DireccionWorkbenchView({items,workflows,offices,permissi
   const [search,setSearch]=useState('')
   const [proveido,setProveido]=useState('')
   const [customRoute,setCustomRoute]=useState([])
+  const listPanelRef=useRef(null)
+  const detailPanelRef=useRef(null)
+  const selectCase=id=>{
+    setSelectedId(id)
+    if(window.innerWidth<=850) detailPanelRef.current?.scrollIntoView({behavior:'smooth',block:'start'})
+  }
+  const backToList=()=>listPanelRef.current?.scrollIntoView({behavior:'smooth',block:'start'})
 
   const list=useMemo(()=>
     pending.filter(x=>`${x.numero} ${x.solicitante} ${x.asunto}`.toLowerCase().includes(search.toLowerCase())),
@@ -92,8 +99,9 @@ export default function DireccionWorkbenchView({items,workflows,offices,permissi
 
       {/* Master Detail Grid */}
       <div className="master-detail-grid">
-        <Panel 
-          title="Expedientes esperando proveído" 
+        <div ref={listPanelRef} className="grid-cell-tight">
+        <Panel
+          title="Expedientes esperando proveído"
           subtitle="Selecciona un expediente para redactar el proveído y activar la ruta."
           actions={
             <div className="search-mini">
@@ -107,8 +115,8 @@ export default function DireccionWorkbenchView({items,workflows,offices,permissi
               list.map(x=>(
                 <button 
                   key={x.id} 
-                  className={`case-item ${selected?.id===x.id?'active':''}`} 
-                  onClick={()=>setSelectedId(x.id)}
+                  className={`case-item ${selected?.id===x.id?'active':''}`}
+                  onClick={()=>selectCase(x.id)}
                 >
                   <div className="case-icon dark">
                     <Stamp size={18}/>
@@ -131,10 +139,17 @@ export default function DireccionWorkbenchView({items,workflows,offices,permissi
             )}
           </div>
         </Panel>
+        </div>
 
-        <Panel 
-          title={selected ? `EXP ${selected.numero} — ${selected.asunto}` : 'Detalle para Proveído'} 
+        <div ref={detailPanelRef} className="grid-cell-tight">
+        <Panel
+          title={selected ? `EXP ${selected.numero} — ${selected.asunto}` : 'Detalle para Proveído'}
           subtitle={selected ? `Solicitante: ${selected.solicitante} · ${selected.programa}` : 'Selecciona un expediente de la lista.'}
+          actions={selected && (
+            <button className="btn ghost mobile-only-back" onClick={backToList}>
+              <ArrowLeft size={14}/> Volver a la lista
+            </button>
+          )}
         >
           {selected ? (
             <div className="case-detail">
@@ -295,6 +310,7 @@ export default function DireccionWorkbenchView({items,workflows,offices,permissi
             <Empty title="Ningún expediente seleccionado" text="Selecciona un expediente pendiente de proveído de la lista."/>
           )}
         </Panel>
+        </div>
       </div>
     </div>
   )

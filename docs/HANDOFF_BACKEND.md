@@ -2,7 +2,7 @@
 
 Este documento es para el desarrollador de **Backend**. Hay una versión hermana para Frontend en [`HANDOFF_FRONTEND.md`](HANDOFF_FRONTEND.md) — el **contrato de API** (sección 6) es el punto de contacto entre ambos documentos y debe mantenerse igual en los dos. Este documento cubre **Sprint 1** (verificación de pago manual, tal como está hoy el prototipo); la verificación **automática** contra una pasarela real es **Sprint 2**, documentado aparte en [`SPRINT2_PASARELA_PAGOS.md`](SPRINT2_PASARELA_PAGOS.md).
 
-> El prototipo de este repositorio (React + `localStorage`, sin backend) no es el Sprint 1 recortado: es la **especificación viva y ya probada** del comportamiento que ustedes deben reproducir con datos reales. No rediseñen las reglas de negocio desde cero — pórtenlas. Todo lo que hoy es una función en `src/workflowEngine.js` ya está pensado y probado (`tests/workflow.test.mjs` + `tests/catalog-regression.test.mjs`, 26 casos).
+> El prototipo de este repositorio (React + `localStorage`, sin backend) no es el Sprint 1 recortado: es la **especificación viva y ya probada** del comportamiento que ustedes deben reproducir con datos reales. No rediseñen las reglas de negocio desde cero — pórtenlas. Todo lo que hoy es una función en `src/workflowEngine.js` ya está pensado y probado (`tests/workflow.test.mjs` + `tests/catalog-regression.test.mjs`, 29 casos).
 
 ---
 
@@ -52,6 +52,8 @@ Repliquen exactamente esos mensajes de error como respuestas de la API (código 
 6. Login: verificar `password` (hasheada, `Hash::check`) y que `active = true`. Un usuario inactivo nunca autentica, aunque la contraseña sea correcta.
 7. Cada transición de estado solo es válida desde estados específicos (tabla de la sección 2) — repliquen cada `if (exp.estado !== 'X') throw ...` como una regla de servicio o un `FormRequest`/Policy, y devuelvan 422/403 según corresponda si no se cumple.
 8. Cada acción sobre un expediente (proveído, observar, completar, redirigir, pago, finalizar) debe verificarse contra el permiso del **usuario autenticado en el servidor** — el frontend solo oculta botones para UX, eso no es seguridad.
+9. **Origen de registro (decisión 2026-09-24):** cada trámite declara en `allowed_creators` quién puede generarlo — el propio solicitante (`applicant`), Secretaría (`secretaria`), o la oficina especializada de su ruta (`office`). Al crear un expediente, validen que el origen de la petición esté en `allowed_creators` del trámite antes de insertar — si no, 422 con "Este trámite no admite ser iniciado desde este origen." Por defecto (catálogo migrado) es `['applicant','secretaria']`; ningún trámite hoy tiene `office` habilitado porque el catálogo del Grupo 5 (admisión/matrícula/cursos) aún no está cargado — esta validación ya está lista para cuando se agregue. Si el origen es `office`, verifiquen además que la oficina autenticada esté en el `route` publicado de ese trámite — una oficina no debe poder originar el trámite de otra.
+10. **Permisos por oficina (decisión 2026-09-24):** el rol `oficina` da un permiso/vista por defecto a las 12 oficinas, pero el Administrador puede personalizar una oficina específica (ej. que solo Tesorería vea "Caja y pagos" y registre pagos, o que solo Comisión de Admisión pueda iniciar expedientes). Al autorizar una acción de un usuario con `role = 'oficina'`, resuelvan primero si existe un override en `office_permissions` para su `office_id`; si existe, usen exactamente esos `views`/`permissions` en vez de los del rol — no los combinen ni los unan. Sin override, la oficina usa el rol `oficina` tal cual. Esto es autorización real, no solo UI: el backend debe aplicar esta resolución en cada policy/middleware, igual que ya hace con el rol.
 
 ## 4. Módulo de pagos (Caja) — lo que más depende de ustedes
 
@@ -127,6 +129,7 @@ create table procedures (
   source varchar(255),                           -- documento/fila de origen (ej. "TUSNE 2026 · fila 81")
   valid_from date,
   verification_status varchar(20) not null default 'pending', -- 'pending' | 'confirmed'
+  allowed_creators jsonb not null default '["applicant","secretaria"]', -- subconjunto de 'applicant'|'secretaria'|'office'
   created_at timestamp, updated_at timestamp
 );
 
@@ -143,6 +146,15 @@ create table role_permissions (
   role varchar(20) primary key,
   views jsonb not null,
   permissions jsonb not null
+);
+
+-- Override opcional por oficina específica (decisión 2026-09-24), encima del rol
+-- 'oficina' compartido. Una oficina sin fila aquí simplemente hereda role_permissions.oficina.
+create table office_permissions (
+  office_id bigint primary key references offices(id),
+  views jsonb not null,
+  permissions jsonb not null,
+  updated_at timestamp
 );
 -- alternativa: spatie/laravel-permission si van a necesitar permisos por usuario individual a futuro
 
@@ -227,8 +239,9 @@ PUT    /api/role-permissions/{role}       (admin)  { views[], permissions[] }
 
 GET    /api/expedientes                   ?estado=&oficina=&search=  (filtrado según rol del usuario autenticado)
 GET    /api/expedientes/{id}
-POST   /api/expedientes/virtual           (estudiante/docente)  crea con estado SOLICITUD_VIRTUAL
-POST   /api/expedientes/fisico            (secretaria)          crea con estado EN_DIRECCION
+POST   /api/expedientes/virtual           (estudiante/docente)  crea con estado SOLICITUD_VIRTUAL, valida allowed_creators='applicant'
+POST   /api/expedientes/fisico            (secretaria)          crea con estado EN_DIRECCION, valida allowed_creators='secretaria'
+POST   /api/expedientes/oficina           (oficina, permiso case.originate)  crea con estado EN_DIRECCION, valida allowed_creators='office' y que la oficina esté en route[]
 POST   /api/expedientes/{id}/registrar-virtual  (secretaria)
 POST   /api/expedientes/{id}/proveido           (direccion)     { proveido, routePlan[] }
 POST   /api/expedientes/{id}/observar           (oficina)       { text }
@@ -251,7 +264,7 @@ Cada endpoint de acción sobre expediente debe: verificar el permiso del usuario
 - Para roles/permisos, dos caminos válidos:
   - Replicar el modelo actual tal cual: una fila por rol con dos arrays (`views`, `permissions`) — simple, ya probado, suficiente si los permisos siguen siendo por-rol y no por-usuario individual.
   - Usar `spatie/laravel-permission` si prevén necesitar permisos por usuario individual o multi-rol por usuario a futuro.
-- **Pendiente de decisión de producto** (ya se lo planteé al cliente, no está resuelto): hoy los permisos son por **rol compartido** — las 6 oficinas reales inician sesión con cuentas distintas pero comparten el mismo rol `oficina` y por lo tanto los mismos permisos. Si en algún momento el cliente quiere que, por ejemplo, Tesorería tenga permisos distintos a Biblioteca, van a necesitar permisos por-oficina, no solo por-rol. Confírmenlo antes de fijar `role_permissions` como tabla definitiva.
+- **Resuelto (decisión 2026-09-24):** las 12 oficinas reales inician sesión con cuentas distintas y comparten el rol `oficina` por defecto, pero el Administrador ya puede darle a una oficina específica (ej. Tesorería) permisos o vistas distintos a las demás, sin tocar el rol compartido. Repliquen esto con la tabla `office_permissions` de la sección 5 y la regla de resolución de la sección 3.10 — no lo simplifiquen de vuelta a "todo por rol".
 
 ## 8. Mapeo prototipo → producción (lo que a ustedes les toca)
 
@@ -259,7 +272,7 @@ Cada endpoint de acción sobre expediente debe: verificar el permiso del usuario
 |---|---|
 | `localStorage` (`src/repositories/prototypeRepository.js`) | Tablas PostgreSQL + Eloquent models |
 | `src/workflowEngine.js` (funciones puras) | Servicios/Actions de Laravel — mismo comportamiento, dentro de transacciones DB |
-| `src/data/catalogs.js` (arrays mutables en memoria de React) | Tablas `offices`, `procedures`, `role_permissions` |
+| `src/data/catalogs.js` (arrays mutables en memoria de React) | Tablas `offices`, `procedures`, `role_permissions`, `office_permissions` |
 | Contraseñas en texto plano | Hasheadas (`Hash::make`) |
 | Enlaces de Google Drive como "adjuntos" y "comprobante de pago" | Subida real de archivos (Laravel `Storage`) |
 | Verificación de pago manual con link pegado a mano | Igual en el primer release; integración con pasarela/Yape es una fase aparte |
@@ -270,8 +283,9 @@ Cada endpoint de acción sobre expediente debe: verificar el permiso del usuario
 | Archivo | Para qué sirve mirarlo |
 |---|---|
 | `src/workflowEngine.js` | Todas las reglas de negocio puras, con sus mensajes de error exactos |
-| `src/models/procedure.js` | Normalización del trámite, requisitos estructurados (`requirementsList`), `canRequestProcedure` y el snapshot inmutable (`captureProcedure`/`preserveProcedureTerms`) — reprodúzcanlo tal cual, es la parte más nueva y más fácil de romper por accidente |
-| `tests/workflow.test.mjs` + `tests/catalog-regression.test.mjs` | 26 casos de prueba — la especificación de comportamiento más confiable que existe |
+| `src/models/procedure.js` | Normalización del trámite, requisitos estructurados (`requirementsList`), `canRequestProcedure(proc, origin)`/`getAllowedCreators` y el snapshot inmutable (`captureProcedure`/`preserveProcedureTerms`) — reprodúzcanlo tal cual, es la parte más nueva y más fácil de romper por accidente |
+| `src/views/OfficeWorkbenchView.jsx` (bloque "Nueva solicitud") | Cómo la oficina especializada origina un expediente: filtra trámites por `allowedCreators` + pertenencia a su propia ruta antes de mostrar el formulario |
+| `tests/workflow.test.mjs` + `tests/catalog-regression.test.mjs` | 29 casos de prueba — la especificación de comportamiento más confiable que existe |
 | `src/data/catalogs.js` | Catálogo maestro de oficinas (incl. provisionales), ~38 trámites del TUSNE 2026 con requisitos estructurados y estado de tarifa, roles, vistas y permisos posibles |
 | `src/data/seed.js` | Datos de ejemplo — sirven directamente como fixtures/seeders de Laravel |
 | `src/repositories/prototypeRepository.js` | Qué se persiste hoy y con qué forma — mapea casi 1 a 1 a qué tablas hacen falta |

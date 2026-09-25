@@ -1,6 +1,6 @@
 import { canRequestProcedure } from '../models/procedure.js'
-import React,{useMemo,useState} from 'react'
-import { Inbox, Search, Plus, ArrowRight, CheckCircle2, FileText, Clock3, ExternalLink, Send, ShieldAlert, ArrowUpRight, CheckCheck, UploadCloud, Trash2 } from 'lucide-react'
+import React,{useMemo,useState,useRef} from 'react'
+import { Inbox, Search, Plus, ArrowRight, ArrowLeft, CheckCircle2, FileText, Clock3, ExternalLink, Send, ShieldAlert, ArrowUpRight, CheckCheck, UploadCloud, Trash2 } from 'lucide-react'
 import { Panel, StatusBadge, SlaBadge, Badge, Empty, RouteStrip, Timeline, FileList, Modal, Field, RequirementsBlock } from '../components/ui'
 import CargoModal from '../components/CargoModal'
 import { PROGRAMS, CONDITIONS, procedureById } from '../data/catalogs'
@@ -24,6 +24,13 @@ export default function SecretariaWorkbenchView({items,procedures,permissions=[]
   const can=perm=>permissions.includes(perm)
   const [tab,setTab]=useState('entrada')
   const [selectedId,setSelectedId]=useState(null)
+  const listPanelRef=useRef(null)
+  const detailPanelRef=useRef(null)
+  const selectCase=id=>{
+    setSelectedId(id)
+    if(window.innerWidth<=850) detailPanelRef.current?.scrollIntoView({behavior:'smooth',block:'start'})
+  }
+  const backToList=()=>listPanelRef.current?.scrollIntoView({behavior:'smooth',block:'start'})
   const [search,setSearch]=useState('')
   const [modal,setModal]=useState(false)
   const [form,setForm]=useState(physicalBase)
@@ -65,7 +72,7 @@ export default function SecretariaWorkbenchView({items,procedures,permissions=[]
 
   const submitPhysical=()=>{
     const p=procedureById(form.procedureId)
-    if(!canRequestProcedure(p)) { setAttError('Selecciona un trámite disponible con tarifa definida.'); return }
+    if(!canRequestProcedure(p,'secretaria')) { setAttError('Selecciona un trámite disponible con tarifa definida.'); return }
     if(!form.solicitante.trim()) return
     const exp=onCreatePhysical({
       ...form,
@@ -136,8 +143,9 @@ export default function SecretariaWorkbenchView({items,procedures,permissions=[]
 
       {/* Master Detail Layout */}
       <div className="master-detail-grid">
-        <Panel 
-          title={tab==='entrada'?'Solicitudes virtuales por validar':tab==='cierre'?'Respuestas listas para entrega':'Expedientes registrados en libro'} 
+        <div ref={listPanelRef} className="grid-cell-tight">
+        <Panel
+          title={tab==='entrada'?'Solicitudes virtuales por validar':tab==='cierre'?'Respuestas listas para entrega':'Expedientes registrados en libro'}
           subtitle="Haz clic en un registro para gestionarlo o ver su trazabilidad."
           actions={
             <div className="search-mini">
@@ -149,10 +157,10 @@ export default function SecretariaWorkbenchView({items,procedures,permissions=[]
           <div className="case-list">
             {source.length ? (
               source.map(x=>(
-                <button 
-                  key={x.id} 
-                  className={`case-item ${selected?.id===x.id?'active':''}`} 
-                  onClick={()=>setSelectedId(x.id)}
+                <button
+                  key={x.id}
+                  className={`case-item ${selected?.id===x.id?'active':''}`}
+                  onClick={()=>selectCase(x.id)}
                 >
                   <div className="case-icon">
                     <Inbox size={18}/>
@@ -175,10 +183,17 @@ export default function SecretariaWorkbenchView({items,procedures,permissions=[]
             )}
           </div>
         </Panel>
+        </div>
 
-        <Panel 
-          title={selected ? `${selected.numero ? `EXP ${selected.numero}` : selected.tracking} — ${selected.asunto}` : 'Detalle del expediente'} 
+        <div ref={detailPanelRef} className="grid-cell-tight">
+        <Panel
+          title={selected ? `${selected.numero ? `EXP ${selected.numero}` : selected.tracking} — ${selected.asunto}` : 'Detalle del expediente'}
           subtitle={selected ? `${selected.solicitante} · Modalidad: ${selected.canal}` : 'Selecciona un expediente del listado.'}
+          actions={selected && (
+            <button className="btn ghost mobile-only-back" onClick={backToList}>
+              <ArrowLeft size={14}/> Volver a la lista
+            </button>
+          )}
         >
           {selected ? (
             <div className="case-detail">
@@ -289,6 +304,7 @@ export default function SecretariaWorkbenchView({items,procedures,permissions=[]
             <Empty title="Ningún expediente seleccionado" text="Selecciona un registro de la lista lateral para visualizar su detalle."/>
           )}
         </Panel>
+        </div>
       </div>
 
       {/* Modal Registro Físico */}
@@ -312,7 +328,7 @@ export default function SecretariaWorkbenchView({items,procedures,permissions=[]
           <Field label="Tipo de trámite / Asunto" required>
             <select value={form.procedureId} onChange={e=>setForm({...form,procedureId:e.target.value})}>
               <option value="">Selecciona un trámite disponible</option>
-              {procedures.filter(canRequestProcedure).map(p=><option value={p.id} key={p.id}>{p.name} (SLA: {p.sla} días)</option>)}
+              {procedures.filter(p=>canRequestProcedure(p,'secretaria')).map(p=><option value={p.id} key={p.id}>{p.name} (SLA: {p.sla} días)</option>)}
             </select>
           </Field>
 

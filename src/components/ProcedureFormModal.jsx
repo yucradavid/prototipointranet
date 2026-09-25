@@ -15,8 +15,15 @@ const emptyReq = { label: '', type: 'document', required: true, note: '' }
 const emptyForm = {
   name: '', category: '', requires: '', requirementsList: [],
   sla: 3, monto: 0, active: true, tariffStatus: 'pending',
-  verificationStatus: 'pending', source: '', validFrom: ''
+  verificationStatus: 'pending', source: '', validFrom: '',
+  allowedCreators: ['applicant', 'secretaria']
 }
+
+const CREATOR_OPTIONS = [
+  { value: 'applicant',  label: 'El solicitante (portal)' },
+  { value: 'secretaria', label: 'Secretaría (ingreso físico)' },
+  { value: 'office',     label: 'La oficina especializada de la ruta' },
+]
 
 export default function ProcedureFormModal({ procedure, offices, onClose, onSave }) {
   const [form, setForm] = useState({ ...emptyForm, ...normalizeProcedure(procedure || emptyForm) })
@@ -148,6 +155,31 @@ export default function ProcedureFormModal({ procedure, offices, onClose, onSave
             value={form.tariffStatus === 'free' ? 0 : form.monto ?? ''}
             onChange={e => setForm({ ...form, monto: e.target.value })}
           />
+        </Field>
+      </div>
+
+      <div style={{ marginBottom: 16 }}>
+        <Field
+          label="¿Quién puede iniciar este trámite?"
+          hint="Decide quién puede generar el expediente. Por defecto, el solicitante y Secretaría, igual que el resto del catálogo."
+        >
+          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+            {CREATOR_OPTIONS.map(opt => (
+              <label key={opt.value} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 500 }}>
+                <input
+                  type="checkbox"
+                  checked={form.allowedCreators.includes(opt.value)}
+                  onChange={e => setForm({
+                    ...form,
+                    allowedCreators: e.target.checked
+                      ? [...form.allowedCreators, opt.value]
+                      : form.allowedCreators.filter(v => v !== opt.value)
+                  })}
+                />
+                {opt.label}
+              </label>
+            ))}
+          </div>
         </Field>
       </div>
 

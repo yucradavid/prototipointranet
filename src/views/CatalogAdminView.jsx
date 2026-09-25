@@ -14,6 +14,7 @@ export default function CatalogAdminView({
   procedures,
   users,
   rolePermissions,
+  officePermissions,
   paymentInfo,
   holidays,
   auditLog,
@@ -28,6 +29,8 @@ export default function CatalogAdminView({
   onBulkSetActive,
   onImportStudents,
   onSaveRolePermissions,
+  onSaveOfficePermissions,
+  onResetOfficePermissions,
   onSavePaymentInfo,
   onSaveHolidays
 }) {
@@ -148,8 +151,12 @@ export default function CatalogAdminView({
       {/* Tab: Roles & Permissions */}
       {tab === 'roles' && (
         <RolePermissionsView
+          offices={offices}
           rolePermissions={rolePermissions}
+          officePermissions={officePermissions}
           onSaveRolePermissions={onSaveRolePermissions}
+          onSaveOfficePermissions={onSaveOfficePermissions}
+          onResetOfficePermissions={onResetOfficePermissions}
         />
       )}
 

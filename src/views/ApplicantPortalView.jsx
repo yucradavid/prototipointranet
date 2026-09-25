@@ -1,6 +1,6 @@
 import { requirementSatisfied, requirementIncluded, canRequestProcedure, getApplicantRequirements } from '../models/procedure.js'
-import React,{useEffect,useMemo,useState} from 'react'
-import { Plus, Search, FileText, UploadCloud, Send, AlertTriangle, Download, CheckCircle2, Paperclip, X, Clock3, Filter, Sparkles, HelpCircle, HardDrive, Check, Wallet } from 'lucide-react'
+import React,{useEffect,useMemo,useState,useRef} from 'react'
+import { Plus, Search, FileText, UploadCloud, Send, AlertTriangle, Download, CheckCircle2, Paperclip, X, Clock3, Filter, Sparkles, HelpCircle, HardDrive, Check, Wallet, ArrowLeft } from 'lucide-react'
 import { Panel, Badge, StatusBadge, SlaBadge, PaymentStatusCard, Modal, Field, Empty, RouteStrip, Timeline, FileList, RequirementsBlock } from '../components/ui'
 import CargoModal from '../components/CargoModal'
 import ReciboPagoModal from '../components/ReciboPagoModal'
@@ -40,6 +40,13 @@ export default function ApplicantPortalView({profileId,items,procedures,currentU
   const [open,setOpen]=useState(false)
   const [selectedId,setSelectedId]=useState(null)
   const [search,setSearch]=useState('')
+  const listPanelRef=useRef(null)
+  const detailPanelRef=useRef(null)
+  const selectCase=id=>{
+    setSelectedId(id)
+    if(window.innerWidth<=850) detailPanelRef.current?.scrollIntoView({behavior:'smooth',block:'start'})
+  }
+  const backToList=()=>listPanelRef.current?.scrollIntoView({behavior:'smooth',block:'start'})
   const [filter,setFilter]=useState('todos') // 'todos' | 'proceso' | 'observados' | 'finalizados'
   const [form,setForm]=useState(initialForm)
   const [checklist,setChecklist]=useState([])
@@ -119,7 +126,7 @@ export default function ApplicantPortalView({profileId,items,procedures,currentU
 
   const submit=()=>{
     const p=procedureById(form.procedureId)
-    if(!canRequestProcedure(p)) { setFormError('Selecciona un trámite disponible con tarifa definida.'); return }
+    if(!canRequestProcedure(p,'applicant')) { setFormError('Selecciona un trámite disponible con tarifa definida.'); return }
     if(!form.fundamento.trim()){
       setFormError('Completa el fundamento o motivo de tu solicitud.')
       return
@@ -255,6 +262,7 @@ export default function ApplicantPortalView({profileId,items,procedures,currentU
 
       {/* Master Detail Grid */}
       <div className="master-detail-grid">
+        <div ref={listPanelRef} className="grid-cell-tight">
         <Panel
           title="Mis expedientes registrados"
           subtitle="Haz clic en cualquier solicitud para revisar su trazabilidad completa."
@@ -271,7 +279,7 @@ export default function ApplicantPortalView({profileId,items,procedures,currentU
                 <button
                   key={x.id}
                   className={`case-item ${selected?.id===x.id?'active':''}`}
-                  onClick={()=>setSelectedId(x.id)}
+                  onClick={()=>selectCase(x.id)}
                 >
                   <div className="case-icon">
                     <FileText size={18}/>
@@ -295,10 +303,17 @@ export default function ApplicantPortalView({profileId,items,procedures,currentU
             )}
           </div>
         </Panel>
+        </div>
 
+        <div ref={detailPanelRef} className="grid-cell-tight">
         <Panel
           title={selected ? `${selected.numero ? `EXP ${selected.numero}` : selected.tracking} — ${selected.asunto}` : 'Detalle de la solicitud'}
           subtitle={selected ? 'Seguimiento institucional y estado en vivo del expediente.' : 'Selecciona una solicitud del listado.'}
+          actions={selected && (
+            <button className="btn ghost mobile-only-back" onClick={backToList}>
+              <ArrowLeft size={14}/> Volver a mis solicitudes
+            </button>
+          )}
         >
           {selected ? (
             <div className="case-detail">
@@ -397,6 +412,7 @@ export default function ApplicantPortalView({profileId,items,procedures,currentU
             <Empty title="Ningún expediente seleccionado" text="Selecciona un expediente de la lista lateral para visualizar su detalle."/>
           )}
         </Panel>
+        </div>
       </div>
 
       {/* Modal Nuevo FUT Virtual */}
@@ -425,7 +441,7 @@ export default function ApplicantPortalView({profileId,items,procedures,currentU
           <Field label="Tipo de trámite requerido" required>
             <select value={form.procedureId} onChange={e=>{setForm({...form,procedureId:e.target.value});setFormError('')}}>
               <option value="">Selecciona un trámite disponible</option>
-              {procedures.filter(canRequestProcedure).map(p=><option key={p.id} value={p.id}>{p.name} (SLA: {p.sla} días{p.monto>0?` · S/ ${Number(p.monto).toFixed(2)}`:' · Gratuito'})</option>)}
+              {procedures.filter(p=>canRequestProcedure(p,'applicant')).map(p=><option key={p.id} value={p.id}>{p.name} (SLA: {p.sla} días{p.monto>0?` · S/ ${Number(p.monto).toFixed(2)}`:' · Gratuito'})</option>)}
             </select>
           </Field>
 

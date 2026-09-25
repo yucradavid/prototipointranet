@@ -1,6 +1,6 @@
 # Guía de demostración del prototipo maestro
 
-Actualizado: 2026-09-21. Refleja el flujo completo con catálogo TUSNE 2026, días hábiles, requisitos estructurados, pagos, feriados configurables y los grupos 1–4 incorporados.
+Actualizado: 2026-09-24. Refleja el flujo completo con catálogo TUSNE 2026, días hábiles, requisitos estructurados, pagos, feriados configurables, los grupos 1–4 incorporados, las 12 oficinas confirmadas y el control de origen del registro (`allowedCreators`).
 
 ---
 
@@ -29,10 +29,10 @@ Entrar como **admin / admin123**.
 - Nota de la ruta visible debajo del preview de ruta en producción.
 
 ### 1c. Usuarios y catálogos — 6 pestañas
-- **Oficinas**: 8 confirmadas + 4 provisionales (Fedatario, Coordinación Académica, Formación Continua, Comisión de Admisión) con notas de correspondencia TUSNE. Badge "Provisional" en amarillo.
-- **Trámites**: editor con requisitos estructurados (lista con tipo/obligatoriedad/nota + pestaña texto legacy), source, vigencia, tariffStatus.
+- **Oficinas**: 12 oficinas confirmadas (las 8 originales más Fedatario, Coordinación Académica, Formación Continua y Comisión de Admisión, confirmadas el 24/09/2026; ya no llevan badge "Provisional").
+- **Trámites**: editor con requisitos estructurados (lista con tipo/obligatoriedad/nota + pestaña texto legacy), source, vigencia, tariffStatus, y desde el 24/09/2026 el bloque "¿Quién puede iniciar este trámite?" (solicitante / Secretaría / oficina especializada).
 - **Usuarios y Accesos**: importación CSV, gestión individual, reseteo de contraseña.
-- **Roles y Permisos**: permiso `case.pay` independiente.
+- **Roles y Permisos**: permiso `case.pay` independiente. Desde el 24/09/2026 también permite **personalizar una oficina específica** (ej. que solo Tesorería vea "Caja y pagos"), sin tocar el rol Oficina compartido — panel "Personalizar por oficina" con badge "Personalizado" y botón para restablecer.
 - **Feriados**: calendario de días no hábiles para el cómputo de SLA. Los 13 feriados nacionales 2026 vienen cargados. Se pueden agregar días de cierre institucional.
 - **Auditoría**: log cronológico de cambios administrativos.
 
@@ -112,7 +112,7 @@ Pestaña **Tesorería** o tesoreria/tesoreria123.
 
 En `Trámites y diseñador de rutas` o `Catálogo de Trámites`:
 - **Grupo 1 (activos)**: Constancias de estudios, matrícula, egresado, biblioteca; Certificado modular; Examen de suficiencia profesional.
-- **Grupo 2 (activos)**: Constancia de no adeudar, disponibilidad de vacante, tercio/quinto, primera matrícula, otras constancias, copia de expediente, récord académico, cambio de nombre, ficha EFSRT, copia de recibo, copia de sílabos. `Autenticación de documentos` marcado inactivo (oficina Fedatario provisional).
+- **Grupo 2 (activos)**: Constancia de no adeudar, disponibilidad de vacante, tercio/quinto, primera matrícula, otras constancias, copia de expediente, récord académico, cambio de nombre, ficha EFSRT, copia de recibo, copia de sílabos, autenticación de documentos (Fedatario confirmado el 24/09/2026).
 - **Grupo 3 (activos)**: Reserva de matrícula, licencia, reincorporación, traslados (ingreso/salida/interno), convalidaciones (interna/externa/EFSRT), regularización.
 - **Grupo 4 (activos)**: Recuperación de U.D., evaluación extraordinaria, trabajo de aplicación, trámite de título, duplicados, examen de idiomas, certificado de idiomas duplicado, copia de acta.
 - **Pendiente (Grupo 5)**: Admisión, matrículas especiales, cursos, alquileres, copias/impresiones — alcance a confirmar con la institución.
@@ -129,11 +129,11 @@ Cualquier cuenta real → "Cambiar mi contraseña" en el menú lateral — pide 
 
 El prototipo cubre el ciclo completo: **presentación de FUT → validación → proveído → pago en Tesorería → atención por oficinas → observación/subsanación → entrega → cierre**. El catálogo incluye los grupos 1–4 del TUSNE 2026 (≈ 40 trámites) con requisitos estructurados, SLA en días hábiles, feriados configurables y snapshots inmutables por expediente.
 
-Lo que aún requiere decisión institucional antes de activar en producción:
-- Vigencia normativa del TUSNE (documento y fecha de aprobación).
-- Oficinas provisionales: Fedatario, Coordinación Académica, Formación Continua, Comisión de Admisión.
-- Grupo 5: qué servicios generan expediente y cuáles son operaciones de Caja/matrícula directa.
-- Plazos vacíos o en rango (admisión: 30–50 días; cursos: vacíos).
+Decisiones ya resueltas con el Líder Técnico (24/09/2026): TUSNE vigente, las 4 oficinas antes provisionales, y que Grupo 5 (admisión/matrícula/cursos) sí genera expediente. Ver `docs/PLAN_ADECUACION_TUPA_TUSNE.md`.
+
+Lo que aún falta antes de activar el Grupo 5 en producción:
+- Plazos vacíos o en rango del Excel (admisión: 30–50 días; cursos: vacíos) — sin esto no se puede cargar su SLA.
 - Tarifas por tipo de solicitante (cursos: 3 precios) y por cantidad (sílabos por unidad).
+- Confirmación formal por escrito (resolución/fecha) de las decisiones ya tomadas, si se requiere para auditoría institucional.
 
 Los documentos `HANDOFF_BACKEND.md`, `HANDOFF_FRONTEND.md` y `SPRINT2_PASARELA_PAGOS.md` detallan cómo el equipo de producción (Laravel 11 + PostgreSQL) debe reproducir este comportamiento con datos reales.
