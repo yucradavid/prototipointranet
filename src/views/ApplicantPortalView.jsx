@@ -128,6 +128,15 @@ export default function ApplicantPortalView({profileId,items,procedures,currentU
   const submit=()=>{
     const p=procedureById(form.procedureId)
     if(!canRequestProcedure(p,'applicant')) { setFormError('Selecciona un trámite disponible con tarifa definida.'); return }
+    // Evita el envío duplicado accidental (doble clic, o el usuario olvidó que ya lo
+    // pidió): si ya tiene una solicitud del mismo trámite sin cerrar, se le avisa antes
+    // de generar trabajo repetido para Mesa de Partes, Dirección y la oficina destino.
+    // No se bloquea — puede haber un motivo legítimo para pedirlo de nuevo.
+    const duplicate=allMine.find(x=>x.procedureId===form.procedureId&&x.estado!=='FINALIZADO')
+    if(duplicate){
+      const label=duplicate.numero?`EXP ${duplicate.numero}`:duplicate.tracking
+      if(!window.confirm(`Ya tienes una solicitud activa de "${p.name}" (${label}). ¿Deseas enviar otra de todos modos?`)) return
+    }
     if(!form.fundamento.trim()){
       setFormError('Completa el fundamento o motivo de tu solicitud.')
       return

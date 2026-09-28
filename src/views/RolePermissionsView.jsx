@@ -1,5 +1,5 @@
 import React,{useState} from 'react'
-import { ShieldCheck, GraduationCap, UserRound, Inbox, Building2, Lock, RotateCcw } from 'lucide-react'
+import { ShieldCheck, GraduationCap, UserRound, Inbox, Building2, Lock, RotateCcw, Users } from 'lucide-react'
 import { Panel, Badge } from '../components/ui'
 import { PROFILES, VIEW_CATALOG, POSSIBLE_VIEWS_BY_ROLE, PERMISSIONS_CATALOG } from '../data/catalogs'
 
@@ -16,17 +16,22 @@ const PERMISSION_GROUPS=[
 ]
 
 export default function RolePermissionsView({rolePermissions,officePermissions={},offices=[],onSaveRolePermissions,onSaveOfficePermissions,onResetOfficePermissions}){
-  const [mode,setMode]=useState('role') // 'role' | 'office'
+  // 'roles': plantillas reutilizables de permisos (lo que un rol PUEDE hacer).
+  // 'offices': asignación — qué oficina usa qué rol, y su excepción si tiene una.
+  // Dos pestañas separadas en vez de dos listas iguales una debajo de la otra: así se
+  // ve de entrada que son dos cosas distintas, no dos formas de hacer lo mismo.
+  const [tab,setTab]=useState('roles')
   const [selectedRole,setSelectedRole]=useState(PROFILES[0].id)
   const [selectedOffice,setSelectedOffice]=useState(null)
 
   const routableOffices=offices.filter(o=>!['mesa_partes','direccion'].includes(o.id))
   const officeRoleDefault=rolePermissions.oficina||{views:[],permissions:[]}
+  const customizedCount=routableOffices.filter(o=>!!officePermissions[o.id]).length
 
-  const selectRole=id=>{ setMode('role'); setSelectedRole(id) }
-  const selectOffice=id=>{ setMode('office'); setSelectedOffice(id) }
+  const selectRole=id=>{ setTab('roles'); setSelectedRole(id) }
+  const selectOffice=id=>{ setTab('offices'); setSelectedOffice(id) }
 
-  const isOfficeMode=mode==='office'&&!!selectedOffice
+  const isOfficeMode=tab==='offices'&&!!selectedOffice
   const officeOverride=isOfficeMode?officePermissions[selectedOffice]:null
   const isCustomized=!!officeOverride
   // Sin personalizar, la oficina hereda tal cual la configuración del rol 'oficina'.
@@ -63,14 +68,30 @@ export default function RolePermissionsView({rolePermissions,officePermissions={
 
   return (
     <div className="role-permissions-grid">
-      <div style={{display:'grid',gap:14}}>
-        <Panel title="Roles del sistema" subtitle="Selecciona un rol para configurar su acceso.">
+      <Panel
+        title={tab==='roles'?'Roles del sistema':'Oficinas — asignación de rol'}
+        subtitle={tab==='roles'?'Plantillas de permisos reutilizables. Editar un rol afecta a todas las cuentas que lo tienen.':'Toda oficina usa el rol "Oficina destino" salvo que tenga una excepción propia.'}
+      >
+        <div className="segmented" style={{marginBottom:14}}>
+          <button className={tab==='roles'?'active':''} onClick={()=>setTab('roles')}>
+            <ShieldCheck size={14} style={{display:'inline',verticalAlign:'text-bottom',marginRight:4}}/>
+            <span>Roles</span>
+            <i>{PROFILES.length}</i>
+          </button>
+          <button className={tab==='offices'?'active':''} onClick={()=>setTab('offices')}>
+            <Users size={14} style={{display:'inline',verticalAlign:'text-bottom',marginRight:4}}/>
+            <span>Oficinas</span>
+            <i>{routableOffices.length}</i>
+          </button>
+        </div>
+
+        {tab==='roles' ? (
           <div className="procedure-list">
             {PROFILES.map(p=>{
               const Icon=roleIcons[p.id]||ShieldCheck
               const rp=rolePermissions[p.id]||{views:[],permissions:[]}
               return (
-                <button key={p.id} className={!isOfficeMode&&selectedRole===p.id?'active':''} onClick={()=>selectRole(p.id)} style={{display:'flex',alignItems:'center',gap:8,justifyContent:'flex-start'}}>
+                <button key={p.id} className={selectedRole===p.id?'active':''} onClick={()=>selectRole(p.id)} style={{display:'flex',alignItems:'center',gap:8,justifyContent:'flex-start'}}>
                   <Icon size={16}/>
                   <div>
                     <b>{p.label}</b>
@@ -80,20 +101,18 @@ export default function RolePermissionsView({rolePermissions,officePermissions={
               )
             })}
           </div>
-        </Panel>
-
-        <Panel title="Personalizar por oficina" subtitle='Ejemplo: si solo Tesorería debe ver "Caja y pagos", personalízala aquí en vez de dársela a las 10 oficinas.'>
+        ) : (
           <div className="procedure-list">
             {routableOffices.map(o=>{
               const custom=!!officePermissions[o.id]
               const cfg=officePermissions[o.id]||officeRoleDefault
               return (
-                <button key={o.id} className={isOfficeMode&&selectedOffice===o.id?'active':''} onClick={()=>selectOffice(o.id)}>
+                <button key={o.id} className={selectedOffice===o.id?'active':''} onClick={()=>selectOffice(o.id)}>
                   <div style={{display:'flex',alignItems:'center',gap:8,minWidth:0}}>
                     <Building2 size={16} style={{color:o.color,flexShrink:0}}/>
                     <div>
                       <b>{o.name}</b>
-                      <span>{cfg.views.length} vista(s) · {cfg.permissions.length} permiso(s)</span>
+                      <span>Rol base: Oficina destino · {cfg.views.length} vista(s) · {cfg.permissions.length} permiso(s)</span>
                     </div>
                   </div>
                   {custom && <Badge tone="info">Personalizado</Badge>}
@@ -101,35 +120,30 @@ export default function RolePermissionsView({rolePermissions,officePermissions={
               )
             })}
           </div>
-        </Panel>
-      </div>
+        )}
+
+        {tab==='offices' && (
+          <p style={{margin:'10px 2px 0',fontSize:11,color:'var(--arib-navy-light)'}}>
+            {customizedCount>0 ? `${customizedCount} de ${routableOffices.length} oficina(s) con excepción propia.` : 'Ninguna oficina tiene una excepción propia todavía.'} Haz clic en una fila para ver o cambiar sus permisos.
+          </p>
+        )}
+      </Panel>
 
       <div style={{display:'grid',gap:18}}>
-        <div className="rule-banner" style={{marginBottom:0}}>
-          <ShieldCheck size={20} style={{color:'var(--arib-primary)'}}/>
-          <div>
-            <b>Cómo funciona esta pantalla</b>
-            <span>
-              Los <strong>roles</strong> (izquierda, arriba) son la configuración por defecto que comparten todas las cuentas de ese tipo — por ejemplo, todas las oficinas parten del rol "Oficina destino".
-              Si una oficina puntual necesita algo distinto, personalízala en <strong>"Personalizar por oficina"</strong> (izquierda, abajo) sin afectar a las demás. Los cambios se guardan solos al marcar o desmarcar una casilla.
-            </span>
-          </div>
-        </div>
-
         {isOfficeMode && (
           <div className="rule-banner" style={{marginBottom:0}}>
             <Building2 size={20} style={{color:selectedOfficeObj?.color||'var(--arib-primary)'}}/>
             <div style={{flex:1}}>
-              <b>{isCustomized?`Permisos personalizados de ${selectedOfficeObj?.name}`:`${selectedOfficeObj?.name} hereda el rol Oficina`}</b>
+              <b>{isCustomized?`Permisos personalizados de ${selectedOfficeObj?.name}`:`${selectedOfficeObj?.name} hereda el rol "Oficina destino"`}</b>
               <span>
                 {isCustomized
-                  ? 'Cualquier cambio aquí aplica solo a esta oficina. El resto sigue usando los permisos del rol Oficina.'
-                  : 'Aún no tiene personalización propia. Marca o desmarca una casilla para crearla, o edita el rol Oficina si el cambio debe aplicar a todas las oficinas.'}
+                  ? 'Esta es una excepción: los cambios de abajo aplican solo a esta oficina. El resto sigue usando el rol "Oficina destino".'
+                  : 'Aún usa el rol compartido tal cual. Marca o desmarca una casilla para crear una excepción solo para esta oficina, o edita el rol "Oficina destino" (pestaña Roles) si el cambio debe aplicar a todas.'}
               </span>
             </div>
             {isCustomized && (
               <button className="btn soft" onClick={()=>onResetOfficePermissions(selectedOffice)}>
-                <RotateCcw size={14}/> Restablecer al rol Oficina
+                <RotateCcw size={14}/> Quitar excepción, volver al rol
               </button>
             )}
           </div>
