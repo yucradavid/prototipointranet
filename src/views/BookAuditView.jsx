@@ -3,6 +3,7 @@ import { Search, Download, BookOpen, FileText, CheckCircle2, UserRound, ShieldCh
 import { Panel, StatusBadge, SlaBadge, Badge, Empty, Timeline } from '../components/ui'
 import { officeName, procedureById, procedureForExpediente } from '../data/catalogs'
 import { slaInfo } from '../workflowEngine'
+import { fuzzyFilter } from '../utils/search.js'
 
 const PAGE_SIZE = 25
 
@@ -21,9 +22,8 @@ export default function BookAuditView({ items }) {
   const [selectedId, setSelectedId] = useState(null)
 
   const rows = useMemo(() => {
-    return items
-      .filter(x => x.numero && x.estado !== 'SOLICITUD_VIRTUAL')
-      .filter(x => `${x.numero} ${x.solicitante} ${x.asunto} ${x.estado}`.toLowerCase().includes(q.toLowerCase()))
+    const byStatus = items.filter(x => x.numero && x.estado !== 'SOLICITUD_VIRTUAL')
+    return fuzzyFilter(byStatus, q, x => `${x.numero} ${x.solicitante} ${x.asunto} ${x.estado}`)
       .filter(x => {
         const iso = toIsoDate(x.fecha)
         if (dateFrom && iso && iso < dateFrom) return false

@@ -5,6 +5,7 @@ import { Panel, StatusBadge, SlaBadge, Badge, Empty, RouteStrip, Timeline, FileL
 import CargoModal from '../components/CargoModal'
 import { PROGRAMS, CONDITIONS, procedureById } from '../data/catalogs'
 import { fileToCompressedDataUrl } from '../utils/imageUpload'
+import { fuzzyFilter } from '../utils/search.js'
 
 const physicalBase={
   procedureId:'const_biblioteca',
@@ -56,12 +57,10 @@ export default function SecretariaWorkbenchView({items,procedures,permissions=[]
   }
   const removeAtt=idx=>setForm(f=>({...f,adjuntos:f.adjuntos.filter((_,i)=>i!==idx)}))
 
-  const source=useMemo(()=>
-    items
-      .filter(x=>tab==='entrada'?x.estado==='SOLICITUD_VIRTUAL':tab==='cierre'?x.estado==='RESPUESTA_MESA':x.numero&&x.estado!=='SOLICITUD_VIRTUAL')
-      .filter(x=>`${x.numero||x.tracking} ${x.solicitante} ${x.asunto}`.toLowerCase().includes(search.toLowerCase())),
-    [items,tab,search]
-  )
+  const source=useMemo(()=>{
+    const byTab=items.filter(x=>tab==='entrada'?x.estado==='SOLICITUD_VIRTUAL':tab==='cierre'?x.estado==='RESPUESTA_MESA':x.numero&&x.estado!=='SOLICITUD_VIRTUAL')
+    return fuzzyFilter(byTab,search,x=>`${x.numero||x.tracking} ${x.solicitante} ${x.asunto}`)
+  },[items,tab,search])
 
   const selected=items.find(x=>x.id===selectedId)||source[0]
 

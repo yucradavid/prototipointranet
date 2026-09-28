@@ -6,6 +6,8 @@ import CargoModal from '../components/CargoModal'
 import ReciboPagoModal from '../components/ReciboPagoModal'
 import { PROGRAMS, CONDITIONS, procedureById, officeName, PAYMENT_INFO } from '../data/catalogs'
 import { fileToCompressedDataUrl, isDataUrl } from '../utils/imageUpload'
+import { fuzzyFilter } from '../utils/search.js'
+import { downloadRespuestaPdf } from '../utils/pdf.js'
 
 const MAX_ATTACHMENTS=10
 const defaultForm={
@@ -98,14 +100,13 @@ export default function ApplicantPortalView({profileId,items,procedures,currentU
   )
 
   const mine=useMemo(()=>{
-    return allMine
-      .filter(x=>{
-        if(filter==='proceso') return !['FINALIZADO','OBSERVADO'].includes(x.estado)
-        if(filter==='observados') return x.estado==='OBSERVADO'
-        if(filter==='finalizados') return x.estado==='FINALIZADO'
-        return true
-      })
-      .filter(x=>`${x.numero||x.tracking} ${x.asunto} ${x.estado}`.toLowerCase().includes(search.toLowerCase()))
+    const byStatus=allMine.filter(x=>{
+      if(filter==='proceso') return !['FINALIZADO','OBSERVADO'].includes(x.estado)
+      if(filter==='observados') return x.estado==='OBSERVADO'
+      if(filter==='finalizados') return x.estado==='FINALIZADO'
+      return true
+    })
+    return fuzzyFilter(byStatus,search,x=>`${x.numero||x.tracking} ${x.asunto} ${x.estado}`)
   },[allMine,filter,search])
 
   const selected=items.find(x=>x.id===selectedId)||mine[0]
@@ -169,14 +170,7 @@ export default function ApplicantPortalView({profileId,items,procedures,currentU
     onCorrect(exp,{files:[file]})
   }
 
-  const downloadRespuesta=(exp)=>{
-    const content=`IESTP ALIANZA RENOVADA ICHUÑA BÉLGICA\r\nRESPUESTA OFICIAL DE TRÁMITE\r\n\r\nExpediente: ${exp.numero}\r\nCódigo: ${exp.tracking}\r\nTrámite: ${exp.asunto}\r\nSolicitante: ${exp.solicitante}\r\nDNI: ${exp.dni}\r\nFecha de emisión: ${exp.fecha}\r\n\r\nDETALLE DE RESOLUCIÓN:\r\n${exp.respuesta}\r\n\r\nDocumento emitido conforme a los reglamentos del IESTP ARIB.`
-    const blob=new Blob([content],{type:'text/plain;charset=utf-8'})
-    const a=document.createElement('a')
-    a.href=URL.createObjectURL(blob)
-    a.download=exp.documentoRespuesta||`Respuesta_EXP_${exp.numero}.txt`
-    a.click()
-  }
+  const downloadRespuesta=(exp)=>downloadRespuestaPdf(exp)
 
   return (
     <div className="role-page">

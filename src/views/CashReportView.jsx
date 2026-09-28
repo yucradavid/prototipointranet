@@ -3,6 +3,91 @@ import { Wallet, Search, Download, Receipt, Landmark, AlertTriangle, ListChecks,
 import { Kpi, Panel, Badge, Empty, Field, Modal } from '../components/ui'
 import { procedureById, procedureForExpediente } from '../data/catalogs'
 import ReciboPagoModal from '../components/ReciboPagoModal'
+import { fuzzyFilter } from '../utils/search.js'
+
+// Redondea el techo del eje Y a un número "limpio" (10, 20, 50, 100, 200, 500...)
+// en vez de usar el máximo exacto de los datos, para que las líneas de referencia
+// sean legibles (0 / mitad / techo) en vez de números arbitrarios.
+function niceMax(value) {
+  if (!(value > 0)) return 10
+  const exp = Math.floor(Math.log10(value))
+  const base = Math.pow(10, exp)
+  const norm = value / base
+  const step = norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 5 ? 5 : 10
+  return step * base
+}
+
+// Camino de una barra con esquinas redondeadas SOLO arriba (4px) y base cuadrada
+// apoyada en la línea de base — una barra con las 4 esquinas redondeadas "flota".
+function roundedTopBarPath(x, yTop, w, yBase) {
+  const r = Math.min(4, w / 2, Math.max(0, yBase - yTop))
+  if (r <= 0) return `M${x},${yTop} L${x + w},${yTop} L${x + w},${yBase} L${x},${yBase} Z`
+  return `M${x},${yTop + r} Q${x},${yTop} ${x + r},${yTop} L${x + w - r},${yTop} Q${x + w},${yTop} ${x + w},${yTop + r} L${x + w},${yBase} L${x},${yBase} Z`
+}
+
+const CHART_W = 640, CHART_H = 200, CHART_TOP = 14, CHART_BOTTOM = 168, CHART_LEFT = 44, CHART_RIGHT = 12
+
+// Barras de recaudación por día. "Recaudación por trámite" (más abajo) ya responde
+// QUÉ concepto genera más ingresos; esto responde CUÁNDO entró la plata — un bache
+// o una racha se ve acá y no en el ranking por concepto.
+function DailyRevenueChart({ data }) {
+  const [hover, setHover] = useState(null)
+  if (!data.length) return <Empty title="Sin recaudación" text="Aún no hay pagos registrados para mostrar por fecha." />
+
+  const max = niceMax(Math.max(...data.map(d => d.total)))
+  const n = data.length
+  const slot = (CHART_W - CHART_LEFT - CHART_RIGHT) / n
+  const barW = Math.min(24, slot * 0.6)
+  const yFor = v => CHART_BOTTOM - (v / max) * (CHART_BOTTOM - CHART_TOP)
+  const ticks = [0, max / 2, max]
+
+  return (
+    <svg viewBox={`0 0 ${CHART_W} ${CHART_H}`} width="100%" height={CHART_H} role="img" aria-label="Recaudación por fecha">
+      {/* Líneas de referencia del eje Y, recesivas */}
+      {ticks.map(t => (
+        <g key={t}>
+          <line x1={CHART_LEFT} x2={CHART_W - CHART_RIGHT} y1={yFor(t)} y2={yFor(t)} stroke="var(--line, #e2e8f0)" strokeWidth="1" />
+          <text x={CHART_LEFT - 6} y={yFor(t)} textAnchor="end" dominantBaseline="middle" fontSize="9" fill="var(--muted, #64748b)">
+            {t >= 1000 ? `${(t / 1000).toFixed(1)}k` : Math.round(t)}
+          </text>
+        </g>
+      ))}
+
+      {data.map((d, i) => {
+        const x = CHART_LEFT + i * slot + (slot - barW) / 2
+        const yTop = yFor(d.total)
+        const isHover = hover === i
+        return (
+          <g key={d.fecha}>
+            {/* Área de acierto: todo el carril, más ancha que la barra visible */}
+            <rect
+              x={CHART_LEFT + i * slot} y={CHART_TOP} width={slot} height={CHART_BOTTOM - CHART_TOP}
+              fill="transparent"
+              tabIndex={0}
+              role="button"
+              aria-label={`${d.fecha}: S/ ${d.total.toFixed(2)}`}
+              onMouseEnter={() => setHover(i)}
+              onMouseLeave={() => setHover(null)}
+              onFocus={() => setHover(i)}
+              onBlur={() => setHover(null)}
+              style={{ outline: 'none', cursor: 'pointer' }}
+            />
+            <path d={roundedTopBarPath(x, yTop, barW, CHART_BOTTOM)} fill={isHover ? '#059669' : '#16a34a'} style={{ pointerEvents: 'none', transition: 'fill 0.15s' }} />
+            {/* Etiqueta de fecha bajo la barra: día/mes corto para no amontonar */}
+            <text x={x + barW / 2} y={CHART_BOTTOM + 14} textAnchor="middle" fontSize="9" fill="var(--muted, #64748b)" style={{ pointerEvents: 'none' }}>
+              {d.fecha.slice(0, 5)}
+            </text>
+            {isHover && (
+              <text x={x + barW / 2} y={Math.max(CHART_TOP + 9, yTop - 6)} textAnchor="middle" fontSize="10" fontWeight="700" fill="var(--arib-navy, #091a2b)" style={{ pointerEvents: 'none' }}>
+                S/ {d.total.toFixed(2)}
+              </text>
+            )}
+          </g>
+        )
+      })}
+    </svg>
+  )
+}
 
 export default function CashReportView({ items, permissions = [], onEditPayment }) {
   const can = perm => permissions.includes(perm)
@@ -30,9 +115,7 @@ export default function CashReportView({ items, permissions = [], onEditPayment 
   )
 
   const filtered = useMemo(() =>
-    payments.filter(({ exp, pago }) =>
-      `${exp.numero} ${exp.solicitante} ${pago.voucher}`.toLowerCase().includes(q.toLowerCase())
-    ),
+    fuzzyFilter(payments, q, ({ exp, pago }) => `${exp.numero} ${exp.solicitante} ${pago.voucher}`),
     [payments, q]
   )
 
@@ -56,6 +139,21 @@ export default function CashReportView({ items, permissions = [], onEditPayment 
     return Object.values(map).sort((a, b) => b.total - a.total)
   }, [payments])
   const maxProcTotal = Math.max(1, ...byProcedure.map(p => p.total))
+
+  const byDate = useMemo(() => {
+    const map = {}
+    payments.forEach(({ pago }) => {
+      const key = pago.fecha || '—'
+      map[key] = (map[key] || 0) + Number(pago.monto || 0)
+    })
+    const toSortable = f => {
+      const [d, m, y] = String(f || '').split('/').map(Number)
+      return d && m && y ? y * 10000 + m * 100 + d : 0
+    }
+    return Object.entries(map)
+      .map(([fecha, total]) => ({ fecha, total }))
+      .sort((a, b) => toSortable(a.fecha) - toSortable(b.fecha))
+  }, [payments])
 
   const exportCsv = () => {
     const header = ['N Exp', 'Trámite', 'Solicitante', 'Monto', 'Método', 'Voucher', 'Fecha', 'Evidencia']
@@ -244,6 +342,15 @@ export default function CashReportView({ items, permissions = [], onEditPayment 
               </div>
             </div>
           )}
+        </Panel>
+      </div>
+
+      <div style={{ marginTop: 20 }}>
+        <Panel
+          title="Recaudación por fecha"
+          subtitle="Cuánto entró y cuándo — pasa el mouse (o navega con Tab) sobre una barra para ver el monto exacto del día."
+        >
+          <DailyRevenueChart data={byDate} />
         </Panel>
       </div>
 

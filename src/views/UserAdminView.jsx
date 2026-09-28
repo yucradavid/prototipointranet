@@ -8,6 +8,7 @@ import { Panel, Badge, Modal, Field, Empty } from '../components/ui'
 import UserFormModal from '../components/UserFormModal'
 import { officeName, roleLabel } from '../data/catalogs'
 import { parseStudentsCsv, buildStudentsTemplateCsv, buildCredentialsCsv } from '../data/userImport'
+import { fuzzyFilter } from '../utils/search.js'
 
 function downloadText(filename, text) {
   const a = document.createElement('a')
@@ -37,18 +38,13 @@ export default function UserAdminView({
   const [showPassword, setShowPassword] = useState(false)
   const [selected, setSelected] = useState(() => new Set())
 
-  const rows = users
-    .filter(u => {
-      if (roleFilter === 'STUDENT') return u.role === 'estudiante'
-      if (roleFilter === 'OFFICE') return u.role === 'oficina'
-      if (roleFilter === 'STAFF') return ['secretaria', 'direccion', 'admin'].includes(u.role)
-      return true
-    })
-    .filter(u =>
-      `${u.fullName} ${u.username} ${u.email || ''} ${u.dni || ''} ${u.codigo || ''}`
-        .toLowerCase()
-        .includes(search.toLowerCase())
-    )
+  const byRole = users.filter(u => {
+    if (roleFilter === 'STUDENT') return u.role === 'estudiante'
+    if (roleFilter === 'OFFICE') return u.role === 'oficina'
+    if (roleFilter === 'STAFF') return ['secretaria', 'direccion', 'admin'].includes(u.role)
+    return true
+  })
+  const rows = fuzzyFilter(byRole, search, u => `${u.fullName} ${u.username} ${u.email || ''} ${u.dni || ''} ${u.codigo || ''}`)
 
   const allVisibleSelected = rows.length > 0 && rows.every(u => selected.has(u.id))
   const toggleSelectAll = () => {

@@ -2,6 +2,7 @@ import React,{useMemo,useState,useRef} from 'react'
 import { Search, Stamp, Route, Plus, X, ArrowRight, ArrowLeft, ShieldCheck, Clock3, Sparkles, CheckCircle2, ChevronRight, FileCheck } from 'lucide-react'
 import { Panel, StatusBadge, SlaBadge, Badge, Empty, RouteStrip, Timeline, FileList } from '../components/ui'
 import { officeName, procedureById, procedureForExpediente } from '../data/catalogs'
+import { fuzzyFilter } from '../utils/search.js'
 
 export default function DireccionWorkbenchView({items,workflows,offices,permissions=[],onProveido}){
   const can=perm=>permissions.includes(perm)
@@ -19,7 +20,7 @@ export default function DireccionWorkbenchView({items,workflows,offices,permissi
   const backToList=()=>listPanelRef.current?.scrollIntoView({behavior:'smooth',block:'start'})
 
   const list=useMemo(()=>
-    pending.filter(x=>`${x.numero} ${x.solicitante} ${x.asunto}`.toLowerCase().includes(search.toLowerCase())),
+    fuzzyFilter(pending,search,x=>`${x.numero} ${x.solicitante} ${x.asunto}`),
     [pending,search]
   )
 

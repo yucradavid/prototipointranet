@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import '@xyflow/react/dist/style.css'
 import {
   ReactFlow, ReactFlowProvider, Background, Controls, MiniMap,
@@ -7,13 +7,14 @@ import {
 import {
   Workflow, Search, Building2, Rocket, Play,
   AlertTriangle, CheckCircle2, LockKeyhole, WandSparkles, Plus,
-  Pencil, Trash2
+  Pencil, Trash2, Undo2, Redo2
 } from 'lucide-react'
 import RouteNode from '../components/RouteNode'
 import { Panel, Badge } from '../components/ui'
 import ProcedureFormModal from '../components/ProcedureFormModal'
 import { officeName } from '../data/catalogs'
 import { validateWorkflowRoute } from '../workflowEngine'
+import { fuzzyFilter } from '../utils/search.js'
 
 const nodeTypes = { route: RouteNode }
 const edgeStyle = {
@@ -98,6 +99,7 @@ function Designer({ procedureId, config, offices, monto, onPublish, onDirtyChang
   // cambio de trámite, soltar una oficina nueva) y todos deben recibir la MISMA
   // función de borrado, así que se define antes y se pasa explícitamente.
   const removeNode = useCallback(nodeId => {
+    pushHistory()
     setNodes(ns => ns.filter(n => n.id !== nodeId))
     setEdges(es => {
       const incoming = es.find(e => e.target === nodeId)
@@ -128,6 +130,46 @@ function Designer({ procedureId, config, offices, monto, onPublish, onDirtyChang
   const [simulation, setSimulation] = useState({ path: [], index: -1 })
   const [dirty, setDirty] = useState(false)
 
+  // ─── Deshacer / Rehacer ────────────────────────────────────────────────────
+  // Refs (no el cierre de nodes/edges) para que pushHistory tenga identidad estable
+  // y removeNode/onConnect/onDrop puedan llamarla sin quedarse con una foto vieja
+  // del lienzo — mismo motivo por el que removeNode ya referencia setNodes/setEdges
+  // antes de que useNodesState/useEdgesState los declaren más abajo.
+  const nodesRef = useRef(nodes)
+  const edgesRef = useRef(edges)
+  useEffect(() => { nodesRef.current = nodes }, [nodes])
+  useEffect(() => { edgesRef.current = edges }, [edges])
+
+  const [history, setHistory] = useState([])
+  const [redoStack, setRedoStack] = useState([])
+
+  const pushHistory = useCallback(() => {
+    setHistory(h => [...h, { nodes: nodesRef.current, edges: edgesRef.current }])
+    setRedoStack([])
+  }, [])
+
+  const undo = useCallback(() => {
+    setHistory(h => {
+      if (!h.length) return h
+      const prev = h[h.length - 1]
+      setRedoStack(r => [...r, { nodes: nodesRef.current, edges: edgesRef.current }])
+      setNodes(prev.nodes)
+      setEdges(prev.edges)
+      return h.slice(0, -1)
+    })
+  }, [setNodes, setEdges])
+
+  const redo = useCallback(() => {
+    setRedoStack(r => {
+      if (!r.length) return r
+      const next = r[r.length - 1]
+      setHistory(h => [...h, { nodes: nodesRef.current, edges: edgesRef.current }])
+      setNodes(next.nodes)
+      setEdges(next.edges)
+      return r.slice(0, -1)
+    })
+  }, [setNodes, setEdges])
+
   useEffect(() => {
     // Solo reconstruir el lienzo al cambiar de TRÁMITE. No incluir config.version aquí:
     // publicar desde este mismo diseñador ya deja el lienzo en el estado correcto, y
@@ -138,6 +180,8 @@ function Designer({ procedureId, config, offices, monto, onPublish, onDirtyChang
     setEdges(x.edges)
     setMessage(null)
     setSimulation({ path: [], index: -1 })
+    setHistory([])
+    setRedoStack([])
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [procedureId])
 
@@ -159,7 +203,7 @@ function Designer({ procedureId, config, offices, monto, onPublish, onDirtyChang
   }, [nodes, edges, config.route])
 
   const onConnect = useCallback(
-    params => setEdges(es => addEdge({ ...params, ...edgeStyle, id: `e-${Date.now()}` }, es)),
+    params => { pushHistory(); setEdges(es => addEdge({ ...params, ...edgeStyle, id: `e-${Date.now()}` }, es)) },
     [setEdges]
   )
 
@@ -168,6 +212,7 @@ function Designer({ procedureId, config, offices, monto, onPublish, onDirtyChang
       e.preventDefault()
       const officeId = e.dataTransfer.getData('application/arib-office')
       if (!officeId) return
+      pushHistory()
       const id = `office-${officeId}-${Date.now()}`
       const position = screenToFlowPosition({ x: e.clientX, y: e.clientY })
       setNodes(ns => [...ns, { id, type: 'route', position, data: officeData(officeId, offices, removeNode), deletable: true }])
@@ -181,6 +226,7 @@ function Designer({ procedureId, config, offices, monto, onPublish, onDirtyChang
   // lienzo en una posición libre, igual que soltarla desde el mouse.
   const addOfficeByClick = useCallback(
     officeId => {
+      pushHistory()
       const id = `office-${officeId}-${Date.now()}`
       setNodes(ns => {
         const count = ns.filter(n => n.data.kind === 'office').length
@@ -196,6 +242,7 @@ function Designer({ procedureId, config, offices, monto, onPublish, onDirtyChang
     try {
       const route = extractRoute(nodes, edges)
       const x = layoutForRoute(route, offices)
+      pushHistory()
       setNodes(x.nodes)
       setEdges(x.edges)
       setMessage({ text: 'Ruta auto-alineada correctamente.', tone: 'ok' })
@@ -242,6 +289,22 @@ function Designer({ procedureId, config, offices, monto, onPublish, onDirtyChang
     const t = setTimeout(() => setSimulation(s => ({ ...s, index: s.index + 1 })), 850)
     return () => clearTimeout(t)
   }, [simulation.index])
+
+  // Ctrl+Z / Ctrl+Y (o Ctrl+Shift+Z) para deshacer/rehacer, como cualquier editor
+  // visual. Se ignora si el foco está en un campo de texto de la pantalla (ej. el
+  // buscador de trámites del panel izquierdo) para no interceptar la escritura normal.
+  useEffect(() => {
+    const onKeyDown = e => {
+      if (!(e.ctrlKey || e.metaKey)) return
+      const tag = document.activeElement?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || document.activeElement?.isContentEditable) return
+      const key = e.key.toLowerCase()
+      if (key === 'z' && !e.shiftKey) { e.preventDefault(); undo() }
+      else if (key === 'y' || (key === 'z' && e.shiftKey)) { e.preventDefault(); redo() }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [undo, redo])
 
   const runtimeNodes = nodes.map(n => {
     const p = simulation.path.indexOf(n.id)
@@ -331,6 +394,12 @@ function Designer({ procedureId, config, offices, monto, onPublish, onDirtyChang
             <span>Conecta secuencialmente las dependencias que evaluarán este trámite.</span>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
+            <button className="btn soft" onClick={undo} disabled={!history.length} title="Deshacer (Ctrl+Z)">
+              <Undo2 size={15} />
+            </button>
+            <button className="btn soft" onClick={redo} disabled={!redoStack.length} title="Rehacer (Ctrl+Y)">
+              <Redo2 size={15} />
+            </button>
             <button className="btn soft" onClick={autoArrange} title="Alinear nodos automáticamente">
               <WandSparkles size={15} /> Ordenar
             </button>
@@ -357,6 +426,7 @@ function Designer({ procedureId, config, offices, monto, onPublish, onDirtyChang
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
+          onNodeDragStart={() => pushHistory()}
           onDrop={onDrop}
           onDragOver={e => {
             e.preventDefault()
@@ -398,9 +468,7 @@ export default function WorkflowAdminView({
     setProcedureId(id)
   }
 
-  const list = procedures.filter(p =>
-    `${p.name} ${p.category}`.toLowerCase().includes(search.toLowerCase())
-  )
+  const list = fuzzyFilter(procedures, search, p => `${p.name} ${p.category}`)
   const p = procedures.find(x => x.id === procedureId) || procedures[0]
   const config = workflows[p?.id] || { version: 1, route: [], updatedAt: 'Hoy' }
 

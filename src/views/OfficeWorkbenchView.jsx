@@ -10,6 +10,7 @@ import { canRequestProcedure } from '../models/procedure.js'
 import ReciboPagoModal from '../components/ReciboPagoModal'
 import CargoModal from '../components/CargoModal'
 import { fileToCompressedDataUrl, isDataUrl } from '../utils/imageUpload'
+import { fuzzyFilter } from '../utils/search.js'
 
 const originateBase = {
   procedureId: '',
@@ -115,9 +116,8 @@ export default function OfficeWorkbenchView({ officeId, items, offices, procedur
   }
 
   const baseQueue = useMemo(() => {
-    return items
-      .filter(x => ['EN_OFICINA', 'OBSERVADO'].includes(x.estado) && x.oficinaActual === officeId)
-      .filter(x => `${x.numero || ''} ${x.solicitante} ${x.asunto}`.toLowerCase().includes(search.toLowerCase()))
+    const byOffice = items.filter(x => ['EN_OFICINA', 'OBSERVADO'].includes(x.estado) && x.oficinaActual === officeId)
+    return fuzzyFilter(byOffice, search, x => `${x.numero || ''} ${x.solicitante} ${x.asunto}`)
   }, [items, officeId, search])
 
   // Una vez que esta oficina completa su paso, el expediente avanza y desaparece de
@@ -125,12 +125,11 @@ export default function OfficeWorkbenchView({ officeId, items, offices, procedur
   // "Resuelto por nosotros" = esta oficina aparece en la ruta y el expediente ya avanzó
   // más allá de su posición en ella (o la ruta ya terminó).
   const resolvedByOffice = useMemo(() => {
-    return items
-      .filter(x => {
-        const idx = (x.routePlan || []).indexOf(officeId)
-        return idx !== -1 && x.routeIndex > idx
-      })
-      .filter(x => `${x.numero || ''} ${x.solicitante} ${x.asunto}`.toLowerCase().includes(search.toLowerCase()))
+    const byRoute = items.filter(x => {
+      const idx = (x.routePlan || []).indexOf(officeId)
+      return idx !== -1 && x.routeIndex > idx
+    })
+    return fuzzyFilter(byRoute, search, x => `${x.numero || ''} ${x.solicitante} ${x.asunto}`)
   }, [items, officeId, search])
 
   const queue = useMemo(() => {

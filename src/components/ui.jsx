@@ -4,6 +4,7 @@ import { statusLabel, statusTone } from '../models/expediente'
 import { officeName, procedureById, procedureForExpediente, PAYMENT_INFO } from '../data/catalogs'
 import { routeProgress, slaInfo, requiresPayment } from '../workflowEngine'
 import { getRequirementsArray } from '../models/procedure.js'
+import { fuzzyFilter } from '../utils/search.js'
 
 // ─── RequirementsBlock ────────────────────────────────────────────────────────
 // Muestra los requisitos estructurados del trámite junto a los adjuntos reales
@@ -15,16 +16,12 @@ export function RequirementsBlock({ exp }) {
 
   const adjuntos = exp?.adjuntos || []
 
-  // Intenta emparejar un requisito con un adjunto por similaridad de nombre
-  const findAttachment = label => {
-    const norm = s => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
-    const key = norm(label)
-    return adjuntos.find(a => {
-      const aName = norm(a.name)
-      // Coincidencia directa o si la clave está contenida en el nombre del adjunto
-      return aName.includes(key.slice(0, 12)) || key.includes(aName.slice(0, 12))
-    })
-  }
+  // Empareja un requisito con su adjunto por similaridad de nombre. Antes comparaba
+  // solo los primeros 12 caracteres normalizados (en cualquier dirección), lo que
+  // hacía colisionar en silencio dos requisitos de un mismo trámite que compartieran
+  // ese prefijo (ej. dos ítems que empiezan con "Copia de..."). fuzzyFilter usa la
+  // similitud del texto completo, no solo el prefijo.
+  const findAttachment = label => fuzzyFilter(adjuntos, label, a => a.name)[0] || null
 
   const typeIcon = type => {
     if (type === 'form')      return <FormInput size={13} style={{ color: '#0369a1' }} />

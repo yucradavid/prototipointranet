@@ -6,6 +6,7 @@ import UserAdminView from './UserAdminView'
 import RolePermissionsView from './RolePermissionsView'
 import AuditLogView from './AuditLogView'
 import { officeName } from '../data/catalogs'
+import { fuzzyFilter } from '../utils/search.js'
 
 const emptyOffice = { name: '', short: '', color: '#0284c7', roleTitle: 'Encargado', note: '', provisional: false }
 
@@ -47,11 +48,11 @@ export default function CatalogAdminView({
   useEffect(() => { setHolidaysList(holidays || []) }, [holidays])
 
   const filteredOffices = useMemo(() =>
-    offices.filter(o => `${o.name} ${o.short} ${o.roleTitle || ''}`.toLowerCase().includes(officeQuery.toLowerCase())),
+    fuzzyFilter(offices, officeQuery, o => `${o.name} ${o.short} ${o.roleTitle || ''}`),
     [offices, officeQuery]
   )
   const filteredProcedures = useMemo(() =>
-    procedures.filter(p => `${p.name} ${p.category}`.toLowerCase().includes(procQuery.toLowerCase())),
+    fuzzyFilter(procedures, procQuery, p => `${p.name} ${p.category}`),
     [procedures, procQuery]
   )
 

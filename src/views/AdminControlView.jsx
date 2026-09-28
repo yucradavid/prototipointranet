@@ -7,6 +7,7 @@ import {
 import { Kpi, Panel, StatusBadge, SlaBadge, Badge, RouteStrip, Empty } from '../components/ui'
 import { PROFILES, PERMISSIONS_CATALOG, officeName, procedureById, rolePerms } from '../data/catalogs'
 import { slaInfo } from '../workflowEngine'
+import { fuzzyFilter } from '../utils/search.js'
 
 export default function AdminControlView({ items, offices, setActiveView }) {
   const [query, setQuery] = useState('')
@@ -32,11 +33,7 @@ export default function AdminControlView({ items, offices, setActiveView }) {
     else if (filterState === 'FINALIZADO') base = finalized
     else base = active // default to active
 
-    return base.filter(x =>
-      `${x.numero || ''} ${x.tracking || ''} ${x.solicitante} ${x.asunto}`
-        .toLowerCase()
-        .includes(query.toLowerCase())
-    )
+    return fuzzyFilter(base, query, x => `${x.numero || ''} ${x.tracking || ''} ${x.solicitante} ${x.asunto}`)
   }, [items, active, inDirection, observed, overdue, dueSoon, finalized, filterState, query])
 
   // Ranking de trámites con más incidencias actuales. No se calcula un "tiempo promedio

@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react'
 import { Search, ShieldAlert, Download } from 'lucide-react'
 import { Panel, Empty } from '../components/ui'
+import { fuzzyFilter } from '../utils/search.js'
 
 // x.time se guarda como "dd/mm/aaaa HH:MM" (ver logAction en App.jsx). Para poder
 // filtrar por rango de fecha con un <input type="date"> (que trabaja en aaaa-mm-dd)
@@ -21,13 +22,16 @@ export default function AuditLogView({ auditLog = [] }) {
     [auditLog]
   )
 
-  const rows = useMemo(() => auditLog.filter(x => {
-    if (actionFilter !== 'ALL' && x.action !== actionFilter) return false
-    const iso = toIsoDate(x.time)
-    if (dateFrom && iso && iso < dateFrom) return false
-    if (dateTo && iso && iso > dateTo) return false
-    return `${x.actor} ${x.action} ${x.detail}`.toLowerCase().includes(q.toLowerCase())
-  }), [auditLog, q, actionFilter, dateFrom, dateTo])
+  const rows = useMemo(() => {
+    const byFilters = auditLog.filter(x => {
+      if (actionFilter !== 'ALL' && x.action !== actionFilter) return false
+      const iso = toIsoDate(x.time)
+      if (dateFrom && iso && iso < dateFrom) return false
+      if (dateTo && iso && iso > dateTo) return false
+      return true
+    })
+    return fuzzyFilter(byFilters, q, x => `${x.actor} ${x.action} ${x.detail}`)
+  }, [auditLog, q, actionFilter, dateFrom, dateTo])
 
   const hasActiveFilters = actionFilter !== 'ALL' || dateFrom || dateTo || q
   const clearFilters = () => { setQ(''); setActionFilter('ALL'); setDateFrom(''); setDateTo('') }
