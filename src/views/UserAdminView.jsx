@@ -1,14 +1,15 @@
 import React, { useState } from 'react'
 import {
   Plus, Pencil, Trash2, KeyRound, Power, Download, UploadCloud,
-  Search, UserRound, ShieldCheck, Building2, CheckCircle2, AlertTriangle,
-  FileSpreadsheet, Sparkles, Eye, EyeOff, PowerOff
+  Search, CheckCircle2, AlertTriangle,
+  FileSpreadsheet, Eye, EyeOff, PowerOff, Building2
 } from 'lucide-react'
 import { Panel, Badge, Modal, Field, Empty } from '../components/ui'
 import UserFormModal from '../components/UserFormModal'
 import { officeName, roleLabel } from '../data/catalogs'
 import { parseStudentsCsv, buildStudentsTemplateCsv, buildCredentialsCsv } from '../data/userImport'
 import { fuzzyFilter } from '../utils/search.js'
+import './UserAdminView.css'
 
 function downloadText(filename, text) {
   const a = document.createElement('a')
@@ -25,7 +26,8 @@ export default function UserAdminView({
   onResetPassword,
   onToggleActive,
   onBulkSetActive,
-  onImportStudents
+  onImportStudents,
+  onOpenOffices
 }) {
   const [search, setSearch] = useState('')
   const [roleFilter, setRoleFilter] = useState('ALL')
@@ -45,6 +47,16 @@ export default function UserAdminView({
     return true
   })
   const rows = fuzzyFilter(byRole, search, u => `${u.fullName} ${u.username} ${u.email || ''} ${u.dni || ''} ${u.codigo || ''}`)
+  const activeCount = users.filter(u => u.active !== false).length
+  const payingOffices = offices.filter(o => o.collectsPayment)
+
+  // Avisos contextuales, mismo criterio que OfficeAdminView: cuentas de oficina sin
+  // dependencia asignada, y oficinas habilitadas para cobrar que todavía no tienen a
+  // nadie a cargo (no pueden operar hasta que se les asigne un usuario aquí).
+  const officeUsersWithoutOffice = users.filter(u => u.role === 'oficina' && !u.office)
+  const payingOfficesWithoutUser = offices.filter(o =>
+    o.collectsPayment && !users.some(u => u.office === o.id && u.role === 'oficina' && u.active !== false)
+  )
 
   const allVisibleSelected = rows.length > 0 && rows.every(u => selected.has(u.id))
   const toggleSelectAll = () => {
@@ -95,56 +107,63 @@ export default function UserAdminView({
   }
 
   return (
-    <>
-      <Panel
-        title="Gestión de Cuentas y Accesos"
-        subtitle="Cada usuario accede con credenciales individuales según su rol institucional y oficina asignada."
-        actions={
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-            <div className="search-mini">
-              <Search size={15} />
-              <input
-                placeholder="Buscar por nombre, usuario, DNI o código…"
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-              />
-            </div>
-            <button className="btn soft" onClick={() => setImportOpen(true)}>
-              <UploadCloud size={15} /> Importar CSV
-            </button>
-            <button className="btn primary" onClick={() => setUserModal({})}>
-              <Plus size={16} /> Nuevo usuario
-            </button>
+    <Panel
+      title="Gestión de Cuentas y Accesos"
+      subtitle="Cada usuario accede con credenciales individuales según su rol institucional y oficina asignada."
+      className="user-admin"
+    >
+      <div className="ua-body">
+        <div className="ua-toolbar">
+          <div className="ua-sections" aria-label="Filtrar por tipo de cuenta">
+            <button type="button" aria-pressed={roleFilter === 'ALL'} onClick={() => setRoleFilter('ALL')}>Todos<b>{users.length}</b></button>
+            <button type="button" aria-pressed={roleFilter === 'STUDENT'} onClick={() => setRoleFilter('STUDENT')}>Estudiantes<b>{users.filter(u => u.role === 'estudiante').length}</b></button>
+            <button type="button" aria-pressed={roleFilter === 'OFFICE'} onClick={() => setRoleFilter('OFFICE')}>Oficinas<b>{users.filter(u => u.role === 'oficina').length}</b></button>
+            <button type="button" aria-pressed={roleFilter === 'STAFF'} onClick={() => setRoleFilter('STAFF')}>Administrativos y Dirección<b>{users.filter(u => ['secretaria', 'direccion', 'admin'].includes(u.role)).length}</b></button>
           </div>
-        }
-      >
-        {/* Role filter pills */}
-        <div className="filter-pill-bar" style={{ marginBottom: 14 }}>
-          <button
-            className={`filter-pill ${roleFilter === 'ALL' ? 'active' : ''}`}
-            onClick={() => setRoleFilter('ALL')}
-          >
-            Todos ({users.length})
-          </button>
-          <button
-            className={`filter-pill ${roleFilter === 'STUDENT' ? 'active' : ''}`}
-            onClick={() => setRoleFilter('STUDENT')}
-          >
-            Estudiantes ({users.filter(u => u.role === 'estudiante').length})
-          </button>
-          <button
-            className={`filter-pill ${roleFilter === 'OFFICE' ? 'active' : ''}`}
-            onClick={() => setRoleFilter('OFFICE')}
-          >
-            Oficinas ({users.filter(u => u.role === 'oficina').length})
-          </button>
-          <button
-            className={`filter-pill ${roleFilter === 'STAFF' ? 'active' : ''}`}
-            onClick={() => setRoleFilter('STAFF')}
-          >
-            Administrativos y Dirección ({users.filter(u => ['secretaria', 'direccion', 'admin'].includes(u.role)).length})
-          </button>
+          <label className="search-mini ua-search"><Search size={16} /><input aria-label="Buscar usuario" placeholder="Buscar por nombre, usuario, DNI o código…" value={search} onChange={e => setSearch(e.target.value)} /></label>
         </div>
+
+        <div className="ua-section-head">
+          <div><h3><Building2 size={19} /> Cuentas de acceso <span>{rows.length}</span></h3><p>{activeCount} de {users.length} cuenta(s) activa(s) en total.</p></div>
+          <div className="ua-actions">
+            <button className="btn soft" onClick={() => setImportOpen(true)}><UploadCloud size={15} /> Importar CSV</button>
+            <button className="btn primary" onClick={() => setUserModal({})}><Plus size={16} /> Nuevo usuario</button>
+          </div>
+        </div>
+
+        {(officeUsersWithoutOffice.length > 0 || payingOfficesWithoutUser.length > 0) && (
+          <div className="ua-notices">
+            {officeUsersWithoutOffice.length > 0 && (
+              <p className="ua-notice"><AlertTriangle size={13} /> {officeUsersWithoutOffice.length} cuenta(s) de oficina sin dependencia asignada — edítalas para elegir su oficina.</p>
+            )}
+            {payingOfficesWithoutUser.length > 0 && (
+              <p className="ua-notice"><AlertTriangle size={13} /> {payingOfficesWithoutUser.map(o => o.name).join(', ')} {payingOfficesWithoutUser.length === 1 ? 'está habilitada para cobrar pagos pero no tiene' : 'están habilitadas para cobrar pagos pero no tienen'} ningún usuario activo a cargo.</p>
+            )}
+          </div>
+        )}
+
+        {payingOffices.length > 0 && (
+          <div className="ua-treasury-board">
+            <div className="ua-treasury-board-head">
+              <div><h3>Responsables de Tesorería y subtesorerías</h3><p>Cambia la dependencia o activa/desactiva cada cuenta desde el formulario de usuario.</p></div>
+              <Badge tone="info">{payingOffices.length} dependencia(s) con cobro</Badge>
+            </div>
+            <div className="ua-treasury-cards">
+              {payingOffices.map(office => {
+                const assigned = users.filter(user => user.role === 'oficina' && user.office === office.id)
+                const active = assigned.filter(user => user.active !== false)
+                const caja = active.filter(user => !Array.isArray(user.moduleAccess) || user.moduleAccess.includes('caja')).length
+                return (
+                  <button type="button" className="ua-treasury-card" key={office.id} onClick={() => { setRoleFilter('OFFICE'); setSearch(office.name) }}>
+                    <div><b>{office.name}</b><span>{office.id === 'tesoreria' ? 'Caja principal' : 'Subtesorería de Tesorería'}</span></div>
+                    <strong>{active.length}<small> activo(s)</small></strong>
+                    <em>{caja} con módulo Caja activo</em>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Bulk action bar, visible only with an active selection */}
         {selected.size > 0 && (
@@ -192,23 +211,7 @@ export default function UserAdminView({
                   </td>
                   <td>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <div
-                        style={{
-                          width: 32,
-                          height: 32,
-                          borderRadius: '50%',
-                          background: 'var(--arib-surface-subtle)',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          color: 'var(--arib-primary)',
-                          fontWeight: 700,
-                          fontSize: 13,
-                          flexShrink: 0
-                        }}
-                      >
-                        {u.fullName.charAt(0)}
-                      </div>
+                      <div className="ua-avatar">{u.fullName.charAt(0)}</div>
                       <div>
                         <b style={{ color: 'var(--arib-navy)', display: 'block' }}>{u.fullName}</b>
                         {u.codigo && (
@@ -250,7 +253,14 @@ export default function UserAdminView({
                   </td>
                   <td style={{ fontSize: 12 }}>
                     {u.office ? (
-                      <b style={{ color: 'var(--arib-navy)' }}>{officeName(u.office)}</b>
+                      <div style={{ display: 'grid', gap: 3 }}>
+                        <b style={{ color: 'var(--arib-navy)' }}>{officeName(u.office)}</b>
+                        {u.role === 'oficina' && offices.find(o => o.id === u.office)?.collectsPayment && (
+                          <span style={{ color: 'var(--arib-success)', fontSize: 10 }}>
+                            {Array.isArray(u.moduleAccess) ? `${u.moduleAccess.length} módulo(s) configurado(s)` : 'Permisos heredados de la oficina'}
+                          </span>
+                        )}
+                      </div>
                     ) : (
                       <span style={{ color: 'var(--arib-navy-light)' }}>—</span>
                     )}
@@ -301,17 +311,23 @@ export default function UserAdminView({
             </tbody>
           </table>
         </div>
-      </Panel>
+
+        <div className="ua-help">
+          <div><b>¿La oficina que necesitas aún no existe?</b><p>Créala primero en Oficinas y Dependencias — ahí también se marca si cobra pagos (sub-tesorería) antes de asignarle un usuario.</p></div>
+          <button className="btn ghost" onClick={onOpenOffices}><Building2 size={15} /> Oficinas y Dependencias</button>
+        </div>
+      </div>
 
       {/* User Form Modal */}
       {userModal && (
         <UserFormModal
           user={userModal}
           offices={offices}
+          users={users}
           onClose={() => setUserModal(null)}
           onSave={data => {
-            onSaveUser(data)
-            setUserModal(null)
+            const saved = onSaveUser(data)
+            if (saved) setUserModal(null)
           }}
         />
       )}
@@ -451,7 +467,6 @@ export default function UserAdminView({
           </Field>
         )}
       </Modal>
-    </>
+    </Panel>
   )
 }
-

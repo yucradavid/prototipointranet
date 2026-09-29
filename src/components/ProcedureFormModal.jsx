@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { Plus, X, ArrowUp, ArrowDown, Route, ListChecks } from 'lucide-react'
+import { Plus, X, ArrowUp, ArrowDown, Route, ListChecks, FileText, BookMarked, Users2 } from 'lucide-react'
 import { Modal, Field } from './ui'
 import { normalizeProcedure, getRequirementsArray } from '../models/procedure.js'
 import { officeName } from '../data/catalogs'
@@ -16,7 +16,8 @@ const emptyForm = {
   name: '', category: '', requires: '', requirementsList: [],
   sla: 3, monto: 0, active: true, tariffStatus: 'pending',
   verificationStatus: 'pending', source: '', validFrom: '',
-  allowedCreators: ['applicant', 'secretaria']
+  allowedCreators: ['applicant', 'secretaria'],
+  requiresMesaPartes: true, requiresDireccion: true
 }
 
 const CREATOR_OPTIONS = [
@@ -24,6 +25,27 @@ const CREATOR_OPTIONS = [
   { value: 'secretaria', label: 'Secretaría (ingreso físico)' },
   { value: 'office',     label: 'La oficina especializada de la ruta' },
 ]
+
+// Encabezado visual reutilizable para cada bloque del formulario — antes solo
+// "Requisitos del trámite" tenía uno, y el resto de campos flotaba sin agrupar
+// (motivo de la queja de que el formulario era repetitivo y confuso de leer).
+function SectionHeader({ icon: Icon, title, hint }) {
+  return (
+    <div style={{ marginBottom: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 700, fontSize: 13, color: 'var(--arib-primary)' }}>
+        <Icon size={15} />
+        <span>{title}</span>
+      </div>
+      {hint && <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--muted)' }}>{hint}</p>}
+    </div>
+  )
+}
+
+// Suffix del selector de oficinas: distingue Tesorería (la caja principal) de una
+// sub-tesorería (cualquier otra oficina habilitada para cobrar, ej. Comisión de
+// Admisión) — ambas comparten la misma capacidad `collectsPayment`, pero se explican
+// distinto para que quede claro que las sub-tesorerías dependen de Tesorería.
+const paymentSuffix = o => !o.collectsPayment ? '' : o.id === 'tesoreria' ? ' · caja principal' : ' · sub-tesorería de Tesorería'
 
 export default function ProcedureFormModal({ procedure, offices, onClose, onSave }) {
   const [form, setForm] = useState({ ...emptyForm, ...normalizeProcedure(procedure || emptyForm) })
@@ -40,6 +62,9 @@ export default function ProcedureFormModal({ procedure, offices, onClose, onSave
 
   const isEdit = !!procedure?.id
   const routableOffices = offices.filter(o => !['mesa_partes', 'direccion'].includes(o.id))
+  const treasuryOffices = routableOffices.filter(o => o.collectsPayment)
+  const operationalOffices = routableOffices.filter(o => !o.collectsPayment)
+  const routeLabel = id => { const office = offices.find(o => o.id === id); return office ? `${office.name}${paymentSuffix(office)}` : id }
 
   const addRouteOffice = id => {
     if (id && !routeDraft.includes(id)) setRouteDraft([...routeDraft, id])
@@ -101,90 +126,122 @@ export default function ProcedureFormModal({ procedure, offices, onClose, onSave
         </>
       }
     >
-      {/* ── Bloque 1: Metadatos y configuración ── */}
-      <div className="form-grid two" style={{ marginBottom: 16 }}>
-        <Field label="Disponibilidad">
-          <select value={form.active ? 'active' : 'inactive'} onChange={e => setForm({ ...form, active: e.target.value === 'active' })}>
-            <option value="active">Activo</option>
-            <option value="inactive">Inactivo para nuevas solicitudes</option>
-          </select>
-        </Field>
+      {/* ── Sección: Datos del trámite ── */}
+      <div style={{ marginBottom: 18 }}>
+        <SectionHeader icon={FileText} title="Datos del trámite" />
+        <div className="form-grid two">
+          <Field label="Nombre del trámite" required>
+            <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Ej. Constancia de estudios" />
+          </Field>
 
-        <Field label="Estado de la tarifa" hint="Una tarifa pendiente impide nuevas solicitudes; no significa que sea gratuita.">
-          <select value={form.tariffStatus} onChange={e => setForm({ ...form, tariffStatus: e.target.value })}>
-            <option value="pending">Pendiente de definir</option>
-            <option value="free">Gratuito</option>
-            <option value="fixed">Importe fijo</option>
-          </select>
-        </Field>
+          <Field label="Categoría / Tipo">
+            <input value={form.category} onChange={e => setForm({ ...form, category: e.target.value })} placeholder="Ej. Constancias, Certificados, Titulación" />
+          </Field>
 
-        <Field label="Documento fuente y referencia">
-          <input value={form.source} onChange={e => setForm({ ...form, source: e.target.value })} placeholder="Ej. TUSNE 2026 · fila 83" />
-        </Field>
+          <Field label="Estado de la tarifa" hint="Una tarifa pendiente impide nuevas solicitudes; no significa que sea gratuita.">
+            <select value={form.tariffStatus} onChange={e => setForm({ ...form, tariffStatus: e.target.value })}>
+              <option value="pending">Pendiente de definir</option>
+              <option value="free">Gratuito</option>
+              <option value="fixed">Importe fijo</option>
+            </select>
+          </Field>
 
-        <Field label="Vigencia desde">
-          <input type="date" value={form.validFrom} onChange={e => setForm({ ...form, validFrom: e.target.value })} />
-        </Field>
+          <Field
+            label="Costo del trámite (S/)"
+            hint={form.tariffStatus === 'pending' ? 'Pendiente de definir.' : form.tariffStatus === 'free' ? 'Sin costo.' : 'Importe fijo en soles.'}
+          >
+            <input
+              type="number" min="0" step="0.01"
+              disabled={form.tariffStatus !== 'fixed'}
+              value={form.tariffStatus === 'free' ? 0 : form.monto ?? ''}
+              onChange={e => setForm({ ...form, monto: e.target.value })}
+            />
+          </Field>
 
-        <Field label="Verificación de la fuente" hint="Registrar la referencia no confirma automáticamente su vigencia.">
-          <select value={form.verificationStatus} onChange={e => setForm({ ...form, verificationStatus: e.target.value })}>
-            <option value="pending">Pendiente de confirmar</option>
-            <option value="confirmed">Confirmada por la institución</option>
-          </select>
-        </Field>
+          <Field label="Plazo / SLA (días hábiles)" required hint="Tiempo máximo normativo">
+            <input type="number" min="1" max="60" value={form.sla} onChange={e => setForm({ ...form, sla: e.target.value })} />
+          </Field>
 
-        <Field label="Nombre del trámite" required>
-          <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Ej. Constancia de estudios" />
-        </Field>
-
-        <Field label="Categoría / Tipo">
-          <input value={form.category} onChange={e => setForm({ ...form, category: e.target.value })} placeholder="Ej. Constancias, Certificados, Titulación" />
-        </Field>
-
-        <Field label="Plazo / SLA (días hábiles)" required hint="Tiempo máximo normativo">
-          <input type="number" min="1" max="60" value={form.sla} onChange={e => setForm({ ...form, sla: e.target.value })} />
-        </Field>
-
-        <Field
-          label="Costo del trámite (S/)"
-          hint={form.tariffStatus === 'pending' ? 'Pendiente de definir.' : form.tariffStatus === 'free' ? 'Sin costo.' : 'Importe fijo en soles.'}
-        >
-          <input
-            type="number" min="0" step="0.01"
-            disabled={form.tariffStatus !== 'fixed'}
-            value={form.tariffStatus === 'free' ? 0 : form.monto ?? ''}
-            onChange={e => setForm({ ...form, monto: e.target.value })}
-          />
-        </Field>
+          <Field label="Disponibilidad">
+            <select value={form.active ? 'active' : 'inactive'} onChange={e => setForm({ ...form, active: e.target.value === 'active' })}>
+              <option value="active">Activo</option>
+              <option value="inactive">Inactivo para nuevas solicitudes</option>
+            </select>
+          </Field>
+        </div>
       </div>
 
-      <div style={{ marginBottom: 16 }}>
-        <Field
-          label="¿Quién puede iniciar este trámite?"
-          hint="Decide quién puede generar el expediente. Por defecto, el solicitante y Secretaría, igual que el resto del catálogo."
-        >
-          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-            {CREATOR_OPTIONS.map(opt => (
-              <label key={opt.value} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 500 }}>
-                <input
-                  type="checkbox"
-                  checked={form.allowedCreators.includes(opt.value)}
-                  onChange={e => setForm({
-                    ...form,
-                    allowedCreators: e.target.checked
-                      ? [...form.allowedCreators, opt.value]
-                      : form.allowedCreators.filter(v => v !== opt.value)
-                  })}
-                />
-                {opt.label}
+      {/* ── Sección: Trazabilidad normativa ── */}
+      <div style={{ marginBottom: 18 }}>
+        <SectionHeader icon={BookMarked} title="Trazabilidad normativa" hint="De dónde sale este trámite y qué tan confirmada está esa fuente — no afecta el flujo, solo la documentación." />
+        <div className="form-grid two">
+          <Field label="Documento fuente y referencia">
+            <input value={form.source} onChange={e => setForm({ ...form, source: e.target.value })} placeholder="Ej. TUSNE 2026 · fila 83" />
+          </Field>
+
+          <Field label="Vigencia desde">
+            <input type="date" value={form.validFrom} onChange={e => setForm({ ...form, validFrom: e.target.value })} />
+          </Field>
+
+          <Field label="Verificación de la fuente" hint="Registrar la referencia no confirma automáticamente su vigencia.">
+            <select value={form.verificationStatus} onChange={e => setForm({ ...form, verificationStatus: e.target.value })}>
+              <option value="pending">Pendiente de confirmar</option>
+              <option value="confirmed">Confirmada por la institución</option>
+            </select>
+          </Field>
+        </div>
+      </div>
+
+      {/* ── Sección: Flujo de atención ── */}
+      <div style={{ marginBottom: 18 }}>
+        <SectionHeader icon={Users2} title="Flujo de atención" hint="Quién puede iniciarlo y si pasa por el registro y proveído estándar antes de llegar a la oficina especializada." />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <Field label="¿Quién puede iniciar este trámite?" hint="Por defecto, el solicitante y Secretaría, igual que el resto del catálogo.">
+            <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+              {CREATOR_OPTIONS.map(opt => (
+                <label key={opt.value} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 500 }}>
+                  <input
+                    type="checkbox"
+                    checked={form.allowedCreators.includes(opt.value)}
+                    onChange={e => setForm({
+                      ...form,
+                      allowedCreators: e.target.checked
+                        ? [...form.allowedCreators, opt.value]
+                        : form.allowedCreators.filter(v => v !== opt.value)
+                    })}
+                  />
+                  {opt.label}
+                </label>
+              ))}
+            </div>
+          </Field>
+
+          <Field
+            label="Pasos institucionales de entrada"
+            hint="Puedes combinar cada paso de forma independiente. La ruta de oficinas siempre empieza después de los pasos que actives."
+          >
+            <div style={{ display: 'grid', gap: 8, padding: '10px 12px', background: 'var(--arib-surface-subtle)', border: '1px solid var(--arib-border)', borderRadius: 8 }}>
+              <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 13 }}>
+                <input type="checkbox" checked={form.requiresMesaPartes !== false} onChange={e => setForm({ ...form, requiresMesaPartes: e.target.checked })} />
+                <span><b>Mesa de Partes</b><small style={{ display: 'block', color: 'var(--muted)', marginTop: 2 }}>Registra y valida la solicitud antes de derivarla.</small></span>
               </label>
-            ))}
-          </div>
-        </Field>
+              <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 13 }}>
+                <input type="checkbox" checked={form.requiresDireccion !== false} onChange={e => setForm({ ...form, requiresDireccion: e.target.checked })} />
+                <span><b>Dirección General</b><small style={{ display: 'block', color: 'var(--muted)', marginTop: 2 }}>Emite el proveído institucional antes de la atención.</small></span>
+              </label>
+            </div>
+          </Field>
+          {!form.requiresMesaPartes && !form.requiresDireccion && isEdit && !(form.route || []).length && (
+            <div className="rule-banner">
+              <Route size={20} style={{ color: 'var(--arib-warning, #f59e0b)' }} />
+              <div><b>Sin ruta publicada</b><span>Este trámite no tiene Mesa de Partes ni Dirección y todavía no tiene una ruta publicada. Publica al menos una oficina en el Diseñador de Rutas.</span></div>
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* ── Bloque 2: Requisitos estructurados ── */}
-      <div style={{ marginBottom: 16 }}>
+      {/* ── Sección: Requisitos estructurados ── */}
+      <div style={{ marginBottom: 18 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 700, fontSize: 13, color: 'var(--arib-primary)' }}>
             <ListChecks size={15} />
@@ -262,71 +319,87 @@ export default function ProcedureFormModal({ procedure, offices, onClose, onSave
         )}
       </div>
 
-      {/* ── Advertencia: trámite con costo sin Tesorería ── */}
-      {Number(form.monto) > 0 && !activeRoute.includes('tesoreria') && (
-        <div className="rule-banner" style={{ marginBottom: 16 }}>
+      {/* ── Advertencia: trámite con costo sin ninguna oficina que cobre pagos ── */}
+      {Number(form.monto) > 0 && !activeRoute.some(id => offices.find(o => o.id === id)?.collectsPayment) && (
+        <div className="rule-banner" style={{ marginBottom: 18 }}>
           <Route size={20} style={{ color: 'var(--arib-warning, #f59e0b)' }} />
           <div>
-            <b>Ruta sin paso de Tesorería</b>
-            <span>Este trámite tiene costo pero su ruta no incluye Tesorería. Nadie validará el pago. Considera agregar Tesorería a la ruta.</span>
+            <b>Ruta sin oficina que cobre pagos</b>
+            <span>Este trámite tiene costo pero su ruta no incluye ninguna oficina habilitada para cobrar (Tesorería o una sub-tesorería). Nadie validará el pago. Agrega una oficina con esa capacidad a la ruta.</span>
           </div>
         </div>
       )}
 
-      {/* ── Bloque 3: Ruta de oficinas ── */}
-      {isEdit ? (
-        <Field label="Ruta canónica actual" hint="Para modificar la ruta en vivo, usa el Diseñador de Rutas.">
-          <div className="soft-box" style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-            <span style={{ fontWeight: 700, color: 'var(--arib-primary)' }}>Mesa de Partes</span>
-            <span>→</span>
-            <span style={{ fontWeight: 700, color: 'var(--arib-navy)' }}>Dirección General</span>
-            {(form.route || []).map(id => (
-              <React.Fragment key={id}>
-                <span>→</span>
-                <span style={{ fontWeight: 700, color: offices.find(o => o.id === id)?.color || 'var(--arib-primary)' }}>{officeName(id)}</span>
-              </React.Fragment>
-            ))}
-            <span>→</span>
-            <span style={{ fontWeight: 700, color: 'var(--arib-success)' }}>Cierre y Entrega</span>
-          </div>
-        </Field>
-      ) : (
-        <>
-          <Field label="Ruta secuencial (después de Dirección General)" required hint="Mesa de Partes y Dirección se añaden automáticamente.">
-            {routeDraft.length ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8 }}>
-                {routeDraft.map((id, i) => (
-                  <div key={id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--arib-surface-subtle)', border: '1px solid var(--arib-border)', borderRadius: 8, padding: '8px 12px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--arib-navy-light)' }}>Paso {i + 1}:</span>
-                      <b style={{ color: 'var(--arib-navy)' }}>{officeName(id)}</b>
-                    </div>
-                    <div style={{ display: 'flex', gap: 4 }}>
-                      <button type="button" className="btn ghost" style={{ padding: '3px 6px', height: 'auto' }} disabled={i === 0} onClick={() => moveRoute(i, -1)} title="Mover antes"><ArrowUp size={14} /></button>
-                      <button type="button" className="btn ghost" style={{ padding: '3px 6px', height: 'auto' }} disabled={i === routeDraft.length - 1} onClick={() => moveRoute(i, 1)} title="Mover después"><ArrowDown size={14} /></button>
-                      <button type="button" className="btn danger-soft" style={{ padding: '3px 6px', height: 'auto' }} onClick={() => setRouteDraft(routeDraft.filter(x => x !== id))} title="Quitar"><X size={14} /></button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div style={{ padding: '12px 14px', background: 'var(--arib-surface-subtle)', borderRadius: 8, fontSize: 12, color: 'var(--arib-navy-light)', marginBottom: 8 }}>
-                Agrega al menos una oficina operativa para el recorrido del trámite.
-              </div>
-            )}
-          </Field>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <Plus size={16} style={{ color: 'var(--arib-primary)' }} />
-            <select defaultValue="" onChange={e => { addRouteOffice(e.target.value); e.target.value = '' }} style={{ flex: 1 }}>
-              <option value="" disabled>Agregar dependencia u oficina a la ruta…</option>
-              {routableOffices.filter(o => !routeDraft.includes(o.id)).map(o => (
-                <option key={o.id} value={o.id}>{o.name}</option>
+      {/* ── Sección: Ruta de oficinas ── */}
+      <div>
+        <SectionHeader icon={Route} title="Ruta de oficinas" />
+        {isEdit ? (
+          <Field label="Ruta canónica actual" hint="Para modificar la ruta en vivo, usa el Diseñador de Rutas.">
+            <div className="soft-box" style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+              {form.requiresMesaPartes && (<>
+                <span style={{ fontWeight: 700, color: 'var(--arib-primary)' }}>Mesa de Partes</span><span>→</span>
+              </>)}
+              {form.requiresDireccion && (<>
+                <span style={{ fontWeight: 700, color: 'var(--arib-navy)' }}>Dirección General</span><span>→</span>
+              </>)}
+              {(form.route || []).map(id => (
+                <React.Fragment key={id}>
+                  <span style={{ fontWeight: 700, color: offices.find(o => o.id === id)?.color || 'var(--arib-primary)' }}>{officeName(id)}</span>
+                  <span>→</span>
+                </React.Fragment>
               ))}
-            </select>
-          </div>
-        </>
-      )}
+              <span style={{ fontWeight: 700, color: 'var(--arib-success)' }}>{form.requiresMesaPartes ? 'Cierre y Entrega' : 'Finalizado por la última oficina'}</span>
+            </div>
+          </Field>
+        ) : (
+          <>
+            <Field
+              label={form.requiresMesaPartes || form.requiresDireccion ? 'Ruta secuencial (después de los pasos institucionales)' : 'Ruta secuencial (trámite sin pasos institucionales)'}
+              required
+              hint={(form.requiresMesaPartes || form.requiresDireccion) ? 'Los pasos seleccionados se muestran antes de la primera oficina.' : 'La ruta empieza directamente en la primera oficina que agregues.'}
+            >
+              {routeDraft.length ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8 }}>
+                  {routeDraft.map((id, i) => (
+                    <div key={id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--arib-surface-subtle)', border: '1px solid var(--arib-border)', borderRadius: 8, padding: '8px 12px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--arib-navy-light)' }}>Paso {i + 1}:</span>
+                        <b style={{ color: 'var(--arib-navy)' }}>{officeName(id)}</b>
+                      </div>
+                      <div style={{ display: 'flex', gap: 4 }}>
+                        <button type="button" className="btn ghost" style={{ padding: '3px 6px', height: 'auto' }} disabled={i === 0} onClick={() => moveRoute(i, -1)} title="Mover antes"><ArrowUp size={14} /></button>
+                        <button type="button" className="btn ghost" style={{ padding: '3px 6px', height: 'auto' }} disabled={i === routeDraft.length - 1} onClick={() => moveRoute(i, 1)} title="Mover después"><ArrowDown size={14} /></button>
+                        <button type="button" className="btn danger-soft" style={{ padding: '3px 6px', height: 'auto' }} onClick={() => setRouteDraft(routeDraft.filter(x => x !== id))} title="Quitar"><X size={14} /></button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ padding: '12px 14px', background: 'var(--arib-surface-subtle)', borderRadius: 8, fontSize: 12, color: 'var(--arib-navy-light)', marginBottom: 8 }}>
+                  Agrega al menos una oficina operativa para el recorrido del trámite.
+                </div>
+              )}
+            </Field>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Plus size={16} style={{ color: 'var(--arib-primary)' }} />
+              <select defaultValue="" onChange={e => { addRouteOffice(e.target.value); e.target.value = '' }} style={{ flex: 1 }}>
+                <option value="" disabled>Agregar dependencia u oficina a la ruta…</option>
+                {treasuryOffices.filter(o => !routeDraft.includes(o.id)).length > 0 && (
+                  <optgroup label="Tesorería y subtesorerías">
+                    {treasuryOffices.filter(o => !routeDraft.includes(o.id)).map(o => <option key={o.id} value={o.id}>{routeLabel(o.id)}</option>)}
+                  </optgroup>
+                )}
+                {operationalOffices.filter(o => !routeDraft.includes(o.id)).length > 0 && (
+                  <optgroup label="Otras oficinas">
+                    {operationalOffices.filter(o => !routeDraft.includes(o.id)).map(o => <option key={o.id} value={o.id}>{routeLabel(o.id)}</option>)}
+                  </optgroup>
+                )}
+              </select>
+            </div>
+          </>
+        )}
+      </div>
     </Modal>
   )
 }

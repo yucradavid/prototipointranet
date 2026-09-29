@@ -42,6 +42,8 @@ export function loadOffices(){
     // Migración 3: agregar campo note y flag provisional a oficinas existentes.
     // Migración 4: incorporar oficinas provisionales nuevas (fedatario, coordinacion_academica,
     //              formacion_continua, comision_admision) sin borrar personalizaciones del admin.
+    // Migración 5: agregar collectsPayment (capacidad de sub-tesorería, 2026-09-28) a Tesorería
+    //              en cuentas que la guardaron antes de que el campo existiera.
     const storedById=Object.fromEntries(stored.map(o=>[o.id,o]))
     const merged=DEFAULT_OFFICES.map(def=>{
       const prev=storedById[def.id]
@@ -56,6 +58,7 @@ export function loadOffices(){
         // note y provisional: si el admin no los tenía, tomar del código
         note: prev.note || def.note || '',
         provisional: prev.provisional !== undefined ? prev.provisional : (def.provisional || false),
+        collectsPayment: prev.collectsPayment !== undefined ? prev.collectsPayment : (def.collectsPayment || false),
       }
       if(withDefault.id==='tesoreria'&&withDefault.roleTitle==='Administrador')
         withDefault.roleTitle='Jefe de Unidad Administrativa'

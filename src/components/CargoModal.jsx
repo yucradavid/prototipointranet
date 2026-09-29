@@ -1,10 +1,14 @@
 import React from 'react'
 import { Printer, X, ShieldCheck, Download, CheckCircle2 } from 'lucide-react'
-import { procedureById, procedureForExpediente } from '../data/catalogs'
+import { procedureById, procedureForExpediente, officeName, officeById } from '../data/catalogs'
 
 export default function CargoModal({ exp, onClose }) {
   if (!exp) return null
   const proc = procedureForExpediente(exp)
+  const skipsDireccion = proc?.requiresDireccion === false
+  // Oficina que realmente cobrará el pago: la primera de la ruta habilitada para ello
+  // (ej. Tesorería o una sub-tesorería) — no siempre es Tesorería.
+  const payingOfficeName = officeName((exp.routePlan || []).find(id => officeById(id)?.collectsPayment) || 'tesoreria')
 
   return (
     <div className="modal-backdrop" onMouseDown={e => { if (e.target === e.currentTarget) onClose?.() }}>
@@ -106,7 +110,11 @@ export default function CargoModal({ exp, onClose }) {
               <b style={{ fontSize: 12, color: '#091a2b', textTransform: 'uppercase', display: 'block', marginBottom: 4 }}>
                 II. Dependencia o autoridad a quien se dirige
               </b>
-              <p style={{ margin: 0, fontSize: 13, color: '#1e293b' }}>Dirección General — IESTP Alianza Renovada Ichuña Bélgica</p>
+              <p style={{ margin: 0, fontSize: 13, color: '#1e293b' }}>
+                {skipsDireccion
+                  ? `${officeName((exp.routePlan || [])[0])} — IESTP Alianza Renovada Ichuña Bélgica`
+                  : 'Dirección General — IESTP Alianza Renovada Ichuña Bélgica'}
+              </p>
             </div>
 
             {/* Section III */}
@@ -219,7 +227,7 @@ export default function CargoModal({ exp, onClose }) {
             )}
             {proc?.monto > 0 && (
               <p className="cargo-footnote" style={{ fontSize: 11, color: '#b45309', textAlign: 'center', margin: '6px 0 0', fontWeight: 600 }}>
-                Este trámite tiene un costo de S/ {Number(proc.monto).toFixed(2)}. Tesorería validará el comprobante de pago que adjuntó (ver sección V) antes de continuar el trámite.
+                Este trámite tiene un costo de S/ {Number(proc.monto).toFixed(2)}. {payingOfficeName} validará el comprobante de pago que adjuntó (ver sección V) antes de continuar el trámite.
               </p>
             )}
           </div>

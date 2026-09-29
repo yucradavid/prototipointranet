@@ -12,8 +12,8 @@ Este documento es para el desarrollador de **Frontend** que construirá la versi
 Solicitante → Mesa de Partes → Dirección (proveído obligatorio) → Oficina(s) según ruta → Mesa de Partes (cierre)
 ```
 
-- Mesa de Partes y Dirección son pasos fijos: la UI nunca debe permitir configurarlos ni saltearlos (compárenlo con `WorkflowAdminView.jsx`, donde esos dos nodos aparecen bloqueados en el diseñador de rutas).
-- Ninguna oficina debe mostrar un expediente en su bandeja si Dirección no emitió antes su proveído.
+- Mesa de Partes y Dirección son el flujo estándar de todo trámite, salvo que el admin haya desactivado `procedure.requiresDireccion` para ese trámite puntual (decisión 2026-09-28) — compárenlo con `WorkflowAdminView.jsx`, donde esos dos nodos aparecen bloqueados en el diseñador de rutas SALVO en ese caso, donde el lienzo pasa a mostrar un nodo "Inicio directo" sin Dirección. Es una excepción explícita por trámite, no algo que la UI deba permitir saltear libremente en cada ruta.
+- Ninguna oficina debe mostrar un expediente en su bandeja si Dirección no emitió antes su proveído — salvo, de nuevo, un trámite con `requiresDireccion:false`, cuyo expediente nace directo en `EN_OFICINA` sin haber pasado por Dirección.
 - El componente `RouteStrip` (en `src/components/ui.jsx`) es el que dibuja visualmente el recorrido — pórtenlo tal cual, ya resuelve los casos de ruta parcial/completa/observada.
 - Algunas oficinas del catálogo son **provisionales** (`office.provisional === true`: Fedatario, Coordinación Académica, Formación Continua, Comisión de Admisión — aún no confirmadas por la institución). Se marcan con badge ⚠ en la paleta del diseñador de rutas (`WorkflowAdminView.jsx`) y, si Dirección intenta emitir un proveído cuya ruta incluye una de estas oficinas, debe ver una advertencia explícita antes de firmar (`validateWorkflowRoute`). No las traten como oficinas normales en el selector.
 
@@ -27,6 +27,8 @@ Solicitante → Mesa de Partes → Dirección (proveído obligatorio) → Oficin
 | `OBSERVADO` | "Observado" | Tarjeta de alerta con el motivo; el solicitante ve un botón "Subsanar ahora"; la oficina ve el motivo pero no puede completar el paso |
 | `RESPUESTA_MESA` | "Respuesta en Mesa de Partes" | Visible en la bandeja de cierre de Secretaría |
 | `FINALIZADO` | "Finalizado" | Tarjeta de éxito con botón de descarga de la respuesta |
+
+Un trámite con `requiresDireccion:false` nunca pasa por `SOLICITUD_VIRTUAL`/`EN_DIRECCION`/`RESPUESTA_MESA`: el expediente nace directo en `EN_OFICINA` y, al completar el último paso de su ruta, pasa directo a `FINALIZADO` (la propia oficina cierra, sin que Secretaría intervenga). `RouteStrip` (`src/components/ui.jsx`) ya maneja este caso — construye la tira SIN el prefijo Mesa de Partes/Dirección ni el paso sintético de cierre cuando el trámite del expediente tiene ese flag; si portan este componente, no olviden portar esa rama también, o el índice "paso actual" queda desalineado con las etiquetas mostradas.
 
 `StatusBadge`, `SlaBadge` y `Timeline` (todos en `src/components/ui.jsx`) ya resuelven cómo pintar cada estado — reutilícenlos o pórtenlos tal cual a su nueva base de componentes.
 
@@ -103,7 +105,7 @@ PUT    /api/offices/{id}                  (admin)
 DELETE /api/offices/{id}                  (admin)
 
 GET    /api/procedures
-POST   /api/procedures                    (admin)  { name, category, requirementsList[], sla, tariffStatus, monto, active, source, validFrom, route[] }
+POST   /api/procedures                    (admin)  { name, category, requirementsList[], sla, tariffStatus, monto, active, source, validFrom, route[], allowedCreators[], requiresDireccion }
 PUT    /api/procedures/{id}
 DELETE /api/procedures/{id}               (admin)
 POST   /api/procedures/{id}/publish-route (admin/direccion)  { route[] }
@@ -125,7 +127,7 @@ GET    /api/expedientes                   ?estado=&oficina=&search=
 GET    /api/expedientes/{id}
 POST   /api/expedientes/virtual           (estudiante/docente)
 POST   /api/expedientes/fisico            (secretaria)
-POST   /api/expedientes/oficina           (oficina, con permiso "Iniciar expedientes directamente desde la oficina")
+POST   /api/expedientes/oficina           (oficina, con permiso "Iniciar expedientes directamente desde la oficina") — si el trámite tiene requiresDireccion:false, el backend crea el expediente directo en EN_OFICINA (sin proveído), usando la ruta publicada del trámite
 POST   /api/expedientes/{id}/registrar-virtual  (secretaria)
 POST   /api/expedientes/{id}/proveido           (direccion)     { proveido, routePlan[] }
 POST   /api/expedientes/{id}/observar           (oficina)       { text }
@@ -133,10 +135,10 @@ POST   /api/expedientes/{id}/subsanar           (solicitante)   { adjuntos[] }
 POST   /api/expedientes/{id}/completar          (oficina)       { note, document }
 POST   /api/expedientes/{id}/redirigir          (oficina)       { officeId, note }
 POST   /api/expedientes/{id}/finalizar          (secretaria)
-POST   /api/expedientes/{id}/pago               (oficina=tesoreria)  { monto, metodo, voucher, fecha, comprobante }
+POST   /api/expedientes/{id}/pago               (oficina con collectsPayment:true)  { monto, metodo, voucher, fecha, comprobante }
 
-GET    /api/reportes/caja                 ?desde=&hasta=&procedure_id=  (admin)
-GET    /api/reportes/caja/export.csv      (admin)
+GET    /api/reportes/caja                 ?desde=&hasta=&oficina_id=&procedure_id=&granularidad=semana|mes|trimestre|año  (admin: cualquier oficina o todas; oficina con collectsPayment:true: implícitamente acotado a la suya)
+GET    /api/reportes/caja/export.csv      (idem)
 ```
 
 Cada acción devuelve el expediente actualizado (o un error 4xx con un mensaje legible — ver sección 6). Después de cada acción exitosa, refresquen el expediente seleccionado con la respuesta del propio endpoint en vez de volver a pedir la lista completa — así evitan parpadeos y llamadas innecesarias.

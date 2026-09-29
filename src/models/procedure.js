@@ -67,6 +67,13 @@ export function normalizeProcedure(procedure) {
     allowedCreators: Array.isArray(procedure.allowedCreators) && procedure.allowedCreators.length > 0
       ? procedure.allowedCreators
       : ['applicant', 'secretaria'],
+    // Compatibilidad: el campo antiguo requiresDireccion:false omitía ambos pasos.
+    // Los dos campos separados permiten configurar Mesa de Partes y Dirección de forma
+    // independiente en el formulario.
+    requiresMesaPartes: procedure.requiresMesaPartes !== undefined
+      ? procedure.requiresMesaPartes
+      : procedure.requiresDireccion !== false,
+    requiresDireccion: procedure.requiresDireccion !== undefined ? procedure.requiresDireccion : true,
   }
   // Migración: si requirementsList está vacío pero hay requires (texto legacy), poblar automáticamente.
   if ((!base.requirementsList || base.requirementsList.length === 0) && base.requires) {

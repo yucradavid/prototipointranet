@@ -1,8 +1,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { loadProcedures, loadExpedientes, loadWorkflows, loadHolidays, saveHolidays } from '../src/repositories/prototypeRepository.js'
+import { loadProcedures, loadExpedientes, loadWorkflows, loadHolidays, saveHolidays, loadOffices } from '../src/repositories/prototypeRepository.js'
 import { requirementSatisfied, requirementIncluded, captureProcedure } from '../src/models/procedure.js'
-import { DEFAULT_PROCEDURES, HOLIDAYS, setHolidaysCatalog } from '../src/data/catalogs.js'
+import { DEFAULT_PROCEDURES, DEFAULT_OFFICES, HOLIDAYS, setHolidaysCatalog, defaultOfficeModuleAccess, normalizeOfficeModuleAccess, resolveOfficeUserAccess } from '../src/data/catalogs.js'
 import { slaInfo, addWorkdays, countWorkdays } from '../src/workflowEngine.js'
 
 function storage(values={}){
@@ -102,4 +102,33 @@ test('unconfirmed syllabi default is disabled without changing old case terms',(
   const snap=captureProcedure(custom)
   custom.requires='Changed'
   assert.notEqual(snap.requires,custom.requires)
+})
+
+test('legacy procedures without requiresDireccion default to true (flujo estándar, no se saltan Mesa de Partes ni Dirección)',()=>{
+  const old=[{id:'diploma_egresado',name:'Mi diploma',monto:150,sla:7,requires:'Mi documento',route:['biblioteca']}]
+  storage({'arib-master-procedures-v1':old})
+  assert.equal(loadProcedures().find(p=>p.id==='diploma_egresado').requiresDireccion,true)
+})
+
+test('loadOffices agrega collectsPayment a Tesorería en cuentas guardadas antes de que existiera el campo, y conserva personalizaciones del admin en otras oficinas',()=>{
+  const old=DEFAULT_OFFICES.map(({collectsPayment,...rest})=>rest)
+  storage({'arib-master-offices-v1':old})
+  const offices=loadOffices()
+  assert.equal(offices.find(o=>o.id==='tesoreria').collectsPayment,true)
+  assert.equal(offices.find(o=>o.id==='biblioteca').collectsPayment,false)
+  const customized=offices.map(o=>o.id==='comision_admision'?{...o,collectsPayment:true}:o)
+  storage({'arib-master-offices-v1':customized})
+  assert.equal(loadOffices().find(o=>o.id==='comision_admision').collectsPayment,true)
+})
+
+test('los módulos de una cuenta de subtesorería se activan y desactivan sin afectar a la oficina',()=>{
+  const sub={id:'comision_admision',name:'Comisión de Admisión',collectsPayment:true}
+  assert.deepEqual(defaultOfficeModuleAccess(sub),['work','caja','book','tracking'])
+  assert.deepEqual(normalizeOfficeModuleAccess(sub,['caja']),['work','caja'])
+  const access=resolveOfficeUserAccess({role:'oficina',office:'tesoreria',moduleAccess:['work','caja']},['work','caja','book','tracking'],['case.attend','case.pay','book.view','case.view'])
+  assert.deepEqual(access.views,['work','caja'])
+  assert.deepEqual(access.permissions,['case.attend','case.observe','case.forward','case.originate','case.pay','case.pay_edit'])
+  const office=resolveOfficeUserAccess({role:'oficina',office:'tesoreria',moduleAccess:['work']},['work','caja'],['case.attend','case.pay'])
+  assert.deepEqual(office.views,['work'])
+  assert.deepEqual(office.permissions,['case.attend','case.observe','case.forward','case.originate'])
 })

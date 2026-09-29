@@ -35,6 +35,10 @@ const NAV_BY_ROLE={
   oficina:[
     ['work','Bandeja de oficina',Building2],
     ['book','Libro y auditoría',BookOpen],
+    // Oculto salvo que el Administrador conceda la vista 'caja' a esta oficina puntual
+    // (personalización por oficina, ver RolePermissionsView) — una sub-tesorería que
+    // cobra sus propios pagos necesita este acceso; el resto de oficinas no lo ve.
+    ['caja','Caja y pagos',Wallet],
     ['tracking','Seguimiento',Search]
   ],
   estudiante:[

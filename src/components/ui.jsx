@@ -285,11 +285,18 @@ export function RouteStrip({exp,compact=false}){
   const stripRef=React.useRef(null)
   const [overflowing,setOverflowing]=React.useState(false)
   const route=exp?.routePlan||[]
+  // Un trámite sin Mesa de Partes ni Dirección (requiresDireccion:false) tampoco tiene esos
+  // pasos en la tira visual — debe coincidir exactamente con routeProgress() (workflowEngine),
+  // que es quien calcula `active` más abajo, o el paso resaltado como "actual" no coincidiría
+  // con la etiqueta mostrada.
+  const proc=procedureForExpediente(exp)
+  const needsMesa=proc?.requiresMesaPartes!==false
+  const needsDireccion=proc?.requiresDireccion!==false
   const steps=[
-    {id:'mesa_partes',label:'Mesa de Partes'},
-    {id:'direccion',label:'Dirección'},
+    ...(needsMesa?[{id:'mesa_partes',label:'Mesa de Partes'}]:[]),
+    ...(needsDireccion?[{id:'direccion',label:'Dirección'}]:[]),
     ...route.map(id=>({id,label:officeName(id)})),
-    {id:'mesa_partes_cierre',label:'Cierre'}
+    ...(needsMesa?[{id:'mesa_partes_cierre',label:'Cierre'}]:[])
   ]
   const active=exp?routeProgress(exp).completed:-1
   // Por qué el expediente está detenido en el paso actual: dato real (estado, pago), no

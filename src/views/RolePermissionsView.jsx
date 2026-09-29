@@ -2,6 +2,7 @@ import React,{useState} from 'react'
 import { ShieldCheck, GraduationCap, UserRound, Inbox, Building2, Lock, RotateCcw, Users } from 'lucide-react'
 import { Panel, Badge } from '../components/ui'
 import { PROFILES, VIEW_CATALOG, POSSIBLE_VIEWS_BY_ROLE, PERMISSIONS_CATALOG } from '../data/catalogs'
+import './RolePermissionsView.css'
 
 const roleIcons={estudiante:GraduationCap,docente:UserRound,secretaria:Inbox,direccion:Building2,oficina:Building2,admin:ShieldCheck}
 
@@ -11,11 +12,11 @@ const PERMISSION_GROUPS=[
   {title:'Solicitudes del ciudadano', hint:'Lo que puede hacer un solicitante con su propio trámite.', keys:['request.create','request.view_own','request.correct']},
   {title:'Mesa de Partes y proveído', hint:'Registro del expediente, derivación por Dirección y cierre.', keys:['case.register','case.receive','case.close','book.view','case.proveido','route.choose','case.view']},
   {title:'Atención en oficina', hint:'Lo que puede hacer la oficina que atiende el paso asignado.', keys:['case.originate','case.attend','case.observe','case.forward']},
-  {title:'Pagos', hint:'Registrar el pago del derecho de trámite en Tesorería y corregirlo si hace falta.', keys:['case.pay','case.pay_edit']},
+  {title:'Pagos', hint:'Registrar el pago del derecho de trámite (Tesorería o una sub-tesorería) y corregirlo si hace falta.', keys:['case.pay','case.pay_edit']},
   {title:'Administración del sistema', hint:'Configurar catálogos, usuarios, auditoría y reportes.', keys:['system.manage','workflow.manage','users.manage','audit.view','reports.view']},
 ]
 
-export default function RolePermissionsView({rolePermissions,officePermissions={},offices=[],onSaveRolePermissions,onSaveOfficePermissions,onResetOfficePermissions}){
+export default function RolePermissionsView({rolePermissions,officePermissions={},offices=[],onSaveRolePermissions,onSaveOfficePermissions,onResetOfficePermissions,onOpenUsers}){
   // 'roles': plantillas reutilizables de permisos (lo que un rol PUEDE hacer).
   // 'offices': asignación — qué oficina usa qué rol, y su excepción si tiene una.
   // Dos pestañas separadas en vez de dos listas iguales una debajo de la otra: así se
@@ -67,6 +68,7 @@ export default function RolePermissionsView({rolePermissions,officePermissions={
   }
 
   return (
+    <>
     <div className="role-permissions-grid">
       <Panel
         title={tab==='roles'?'Roles del sistema':'Oficinas — asignación de rol'}
@@ -86,14 +88,14 @@ export default function RolePermissionsView({rolePermissions,officePermissions={
         </div>
 
         {tab==='roles' ? (
-          <div className="procedure-list">
+          <div className="rp-cards">
             {PROFILES.map(p=>{
               const Icon=roleIcons[p.id]||ShieldCheck
               const rp=rolePermissions[p.id]||{views:[],permissions:[]}
               return (
-                <button key={p.id} className={selectedRole===p.id?'active':''} onClick={()=>selectRole(p.id)} style={{display:'flex',alignItems:'center',gap:8,justifyContent:'flex-start'}}>
-                  <Icon size={16}/>
-                  <div>
+                <button type="button" key={p.id} className={`rp-card ${selectedRole===p.id?'active':''}`} onClick={()=>selectRole(p.id)}>
+                  <span className="rp-card-icon"><Icon size={17}/></span>
+                  <div className="rp-card-body">
                     <b>{p.label}</b>
                     <span>{rp.views.length} vista(s) · {rp.permissions.length} permiso(s)</span>
                   </div>
@@ -102,18 +104,16 @@ export default function RolePermissionsView({rolePermissions,officePermissions={
             })}
           </div>
         ) : (
-          <div className="procedure-list">
+          <div className="rp-cards">
             {routableOffices.map(o=>{
               const custom=!!officePermissions[o.id]
               const cfg=officePermissions[o.id]||officeRoleDefault
               return (
-                <button key={o.id} className={selectedOffice===o.id?'active':''} onClick={()=>selectOffice(o.id)}>
-                  <div style={{display:'flex',alignItems:'center',gap:8,minWidth:0}}>
-                    <Building2 size={16} style={{color:o.color,flexShrink:0}}/>
-                    <div>
-                      <b>{o.name}</b>
-                      <span>Rol base: Oficina destino · {cfg.views.length} vista(s) · {cfg.permissions.length} permiso(s)</span>
-                    </div>
+                <button type="button" key={o.id} className={`rp-card ${selectedOffice===o.id?'active':''}`} onClick={()=>selectOffice(o.id)}>
+                  <span className="rp-card-icon" style={{color:o.color}}><Building2 size={17}/></span>
+                  <div className="rp-card-body">
+                    <b>{o.name}</b>
+                    <span>Rol base: Oficina destino · {cfg.views.length} vista(s) · {cfg.permissions.length} permiso(s)</span>
                   </div>
                   {custom && <Badge tone="info">Personalizado</Badge>}
                 </button>
@@ -190,5 +190,10 @@ export default function RolePermissionsView({rolePermissions,officePermissions={
         </Panel>
       </div>
     </div>
+    <div className="rp-help">
+      <div><b>¿No encuentras el permiso que necesitas?</b><p>Revisa Usuarios y Accesos para confirmar el rol y la oficina asignada a la cuenta — los permisos de arriba dependen de eso.</p></div>
+      <button className="btn ghost" onClick={onOpenUsers}><Users size={15}/> Usuarios y Accesos</button>
+    </div>
+    </>
   )
 }

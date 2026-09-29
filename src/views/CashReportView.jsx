@@ -1,9 +1,54 @@
 import React, { useMemo, useState } from 'react'
 import { Wallet, Search, Download, Receipt, Landmark, AlertTriangle, ListChecks, ExternalLink, Pencil, History } from 'lucide-react'
 import { Kpi, Panel, Badge, Empty, Field, Modal } from '../components/ui'
-import { procedureById, procedureForExpediente } from '../data/catalogs'
+import { procedureById, procedureForExpediente, officeName } from '../data/catalogs'
 import ReciboPagoModal from '../components/ReciboPagoModal'
 import { fuzzyFilter } from '../utils/search.js'
+
+// ─── Cierre de caja por periodo (año/trimestre/mes/semana) ─────────────────────
+// Rendición de cuentas por comisión (decisión 2026-09-28): cada oficina habilitada
+// para cobrar pagos (sub-tesorería) necesita ver sus propios totales agrupados por
+// periodo, separado del reporte continuo de Tesorería.
+const PERIODS = [
+  { value: 'week', label: 'Semana' },
+  { value: 'month', label: 'Mes' },
+  { value: 'quarter', label: 'Trimestre' },
+  { value: 'year', label: 'Año' },
+]
+const MONTHS = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Set', 'Oct', 'Nov', 'Dic']
+
+function parsePeriodDate(fecha) {
+  const [d, m, y] = String(fecha || '').split('/').map(Number)
+  if (!d || !m || !y) return null
+  return new Date(y, m - 1, d)
+}
+
+// Semana ISO 8601: la semana que contiene el primer jueves del año es la semana 1.
+function isoWeek(date) {
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()))
+  const dayNum = (d.getUTCDay() + 6) % 7
+  d.setUTCDate(d.getUTCDate() - dayNum + 3)
+  const firstThursday = new Date(Date.UTC(d.getUTCFullYear(), 0, 4))
+  const week = 1 + Math.round(((d - firstThursday) / 86400000 - 3 + ((firstThursday.getUTCDay() + 6) % 7)) / 7)
+  return { year: d.getUTCFullYear(), week }
+}
+
+function periodKey(fecha, granularity) {
+  const d = parsePeriodDate(fecha)
+  if (!d) return { key: '—', label: '— (fecha inválida)', sortable: 0 }
+  if (granularity === 'week') {
+    const { year, week } = isoWeek(d)
+    return { key: `${year}-W${week}`, label: `Semana ${week} · ${year}`, sortable: year * 100 + week }
+  }
+  if (granularity === 'quarter') {
+    const q = Math.floor(d.getMonth() / 3) + 1
+    return { key: `${d.getFullYear()}-Q${q}`, label: `Trimestre ${q} · ${d.getFullYear()}`, sortable: d.getFullYear() * 10 + q }
+  }
+  if (granularity === 'year') {
+    return { key: String(d.getFullYear()), label: String(d.getFullYear()), sortable: d.getFullYear() }
+  }
+  return { key: `${d.getFullYear()}-${d.getMonth() + 1}`, label: `${MONTHS[d.getMonth()]} ${d.getFullYear()}`, sortable: d.getFullYear() * 100 + (d.getMonth() + 1) }
+}
 
 // Redondea el techo del eje Y a un número "limpio" (10, 20, 50, 100, 200, 500...)
 // en vez de usar el máximo exacto de los datos, para que las líneas de referencia
@@ -89,13 +134,20 @@ function DailyRevenueChart({ data }) {
   )
 }
 
-export default function CashReportView({ items, permissions = [], onEditPayment }) {
+export default function CashReportView({ items, offices = [], permissions = [], onEditPayment, scopeOfficeId }) {
   const can = perm => permissions.includes(perm)
   const [q, setQ] = useState('')
   const [reciboExp, setReciboExp] = useState(null)
   const [editExp, setEditExp] = useState(null)
   const [editMonto, setEditMonto] = useState('')
   const [editErr, setEditErr] = useState('')
+  const [officeFilter, setOfficeFilter] = useState('all')
+  const [granularity, setGranularity] = useState('month')
+
+  // scopeOfficeId: una oficina no-admin (sub-tesorería) siempre ve solo lo suyo. El
+  // Administrador, sin scope, puede elegir "todas" o una oficina puntual con el selector.
+  const payingOffices = offices.filter(o => o.collectsPayment)
+  const effectiveOfficeId = scopeOfficeId || (officeFilter !== 'all' ? officeFilter : null)
 
   const openEdit = exp => { setEditExp(exp); setEditMonto(String(exp.pago.monto)); setEditErr('') }
   const closeEdit = () => { setEditExp(null); setEditErr('') }
@@ -108,10 +160,10 @@ export default function CashReportView({ items, permissions = [], onEditPayment 
 
   const payments = useMemo(() =>
     items
-      .filter(x => x.pago?.estado === 'PAGADO')
+      .filter(x => x.pago?.estado === 'PAGADO' && (!effectiveOfficeId || (x.pago.oficinaId || 'tesoreria') === effectiveOfficeId))
       .map(x => ({ exp: x, pago: x.pago, proc: procedureForExpediente(x) }))
       .sort((a, b) => String(b.pago.registradoAt || '').localeCompare(String(a.pago.registradoAt || ''))),
-    [items]
+    [items, effectiveOfficeId]
   )
 
   const filtered = useMemo(() =>
@@ -121,10 +173,15 @@ export default function CashReportView({ items, permissions = [], onEditPayment 
 
   const totalRecaudado = payments.reduce((s, { pago }) => s + Number(pago.monto || 0), 0)
 
+  // Sin scope: igual que siempre, cualquier trámite de pago aún no pagado (llegue o no a
+  // haber llegado a una oficina que cobra). Con scope (una sub-tesorería o el filtro del
+  // Administrador): solo lo que está actualmente detenido en ESA oficina esperando pago —
+  // es lo único que esa oficina puede accionar.
   const pending = items.filter(x =>
     (procedureForExpediente(x)?.monto || 0) > 0 &&
     x.pago?.estado !== 'PAGADO' &&
-    x.estado !== 'FINALIZADO'
+    x.estado !== 'FINALIZADO' &&
+    (!effectiveOfficeId || x.oficinaActual === effectiveOfficeId)
   )
   const totalPendiente = pending.reduce((s, x) => s + Number(procedureForExpediente(x)?.monto || 0), 0)
 
@@ -155,6 +212,17 @@ export default function CashReportView({ items, permissions = [], onEditPayment 
       .sort((a, b) => toSortable(a.fecha) - toSortable(b.fecha))
   }, [payments])
 
+  const byPeriod = useMemo(() => {
+    const map = {}
+    payments.forEach(({ pago }) => {
+      const { key, label, sortable } = periodKey(pago.fecha, granularity)
+      if (!map[key]) map[key] = { key, label, total: 0, count: 0, sortable }
+      map[key].total += Number(pago.monto || 0)
+      map[key].count += 1
+    })
+    return Object.values(map).sort((a, b) => b.sortable - a.sortable)
+  }, [payments, granularity])
+
   const exportCsv = () => {
     const header = ['N Exp', 'Trámite', 'Solicitante', 'Monto', 'Método', 'Voucher', 'Fecha', 'Evidencia']
     const data = filtered.map(({ exp, pago, proc }) => [
@@ -173,12 +241,14 @@ export default function CashReportView({ items, permissions = [], onEditPayment 
     <div className="role-page">
       <div className="hero-row">
         <div>
-          <span className="eyebrow">TESORERÍA · CONTROL FINANCIERO</span>
-          <h1>Caja y Reporte de Pagos</h1>
+          <span className="eyebrow">{scopeOfficeId ? `${officeName(scopeOfficeId).toUpperCase()} · CIERRE DE CAJA` : 'CAJA · CONTROL FINANCIERO INSTITUCIONAL'}</span>
+          <h1>{scopeOfficeId ? `Caja de ${officeName(scopeOfficeId)}` : 'Caja y Reporte de Pagos'}</h1>
           <p>
-            Consolidado institucional de los derechos de trámite cobrados por Tesorería, con trazabilidad
-            de voucher, método de pago y trámites pendientes de cobro.
+            {scopeOfficeId
+              ? `Consolidado de los derechos de trámite cobrados por ${officeName(scopeOfficeId)}, con trazabilidad de voucher, método de pago y cierre por periodo.`
+              : 'Consolidado institucional de los derechos de trámite cobrados, con trazabilidad de voucher, método de pago y trámites pendientes de cobro.'}
           </p>
+          {scopeOfficeId && scopeOfficeId !== 'tesoreria' && <Badge tone="success">Sub-tesorería de Tesorería</Badge>}
         </div>
         <button className="btn primary big" onClick={exportCsv} disabled={!filtered.length}>
           <Download size={18} /> Exportar reporte (CSV)
@@ -219,15 +289,23 @@ export default function CashReportView({ items, permissions = [], onEditPayment 
       <div className="admin-two-col">
         <Panel
           title="Historial de pagos"
-          subtitle={`${filtered.length} pago(s) registrado(s) por Tesorería`}
+          subtitle={`${filtered.length} pago(s) registrado(s)${scopeOfficeId ? ` por ${officeName(scopeOfficeId)}` : ''}`}
           actions={
-            <div className="search-mini">
-              <Search size={15} />
-              <input
-                value={q}
-                onChange={e => setQ(e.target.value)}
-                placeholder="Buscar por EXP, solicitante o voucher…"
-              />
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+              {!scopeOfficeId && payingOffices.length > 1 && (
+                <select value={officeFilter} onChange={e => setOfficeFilter(e.target.value)} style={{ fontSize: 12, height: 34 }} title="Filtrar por oficina que cobra">
+                  <option value="all">Todas (Tesorería + sub-tesorerías)</option>
+                  {payingOffices.map(o => <option key={o.id} value={o.id}>{o.id === 'tesoreria' ? o.name : `↳ ${o.name} (sub-tesorería)`}</option>)}
+                </select>
+              )}
+              <div className="search-mini">
+                <Search size={15} />
+                <input
+                  value={q}
+                  onChange={e => setQ(e.target.value)}
+                  placeholder="Buscar por EXP, solicitante o voucher…"
+                />
+              </div>
             </div>
           }
         >
@@ -290,7 +368,7 @@ export default function CashReportView({ items, permissions = [], onEditPayment 
                 )) : (
                   <tr>
                     <td colSpan={can('case.pay_edit') ? 10 : 9}>
-                      <Empty title="Sin pagos registrados" text="Aún no se ha registrado ningún pago de derecho de trámite en Tesorería." />
+                      <Empty title="Sin pagos registrados" text={`Aún no se ha registrado ningún pago de derecho de trámite${scopeOfficeId ? ` en ${officeName(scopeOfficeId)}` : ''}.`} />
                     </td>
                   </tr>
                 )}
@@ -337,7 +415,9 @@ export default function CashReportView({ items, permissions = [], onEditPayment 
                   {pending.length} expediente(s) con pago pendiente · S/ {totalPendiente.toFixed(2)}
                 </b>
                 <p style={{ margin: '4px 0 0', fontSize: 12, color: '#92400e' }}>
-                  Corresponden a trámites de pago que aún no llegan a Tesorería o cuyo comprobante no ha sido registrado.
+                  {scopeOfficeId
+                    ? `Expedientes detenidos en ${officeName(scopeOfficeId)} esperando el registro del pago.`
+                    : 'Corresponden a trámites de pago que aún no llegan a la oficina que cobra o cuyo comprobante no ha sido registrado.'}
                 </p>
               </div>
             </div>
@@ -351,6 +431,45 @@ export default function CashReportView({ items, permissions = [], onEditPayment 
           subtitle="Cuánto entró y cuándo — pasa el mouse (o navega con Tab) sobre una barra para ver el monto exacto del día."
         >
           <DailyRevenueChart data={byDate} />
+        </Panel>
+      </div>
+
+      <div style={{ marginTop: 20 }}>
+        <Panel
+          title="Cierre de caja por periodo"
+          subtitle={scopeOfficeId
+            ? `Rendición de cuentas de ${officeName(scopeOfficeId)}, agrupada por periodo para su cierre.`
+            : 'Rendición de cuentas agrupada por periodo — útil para el cierre de cada comisión que cobra pagos.'}
+          actions={
+            <select value={granularity} onChange={e => setGranularity(e.target.value)} style={{ fontSize: 12, height: 34 }}>
+              {PERIODS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
+            </select>
+          }
+        >
+          {byPeriod.length ? (
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Periodo</th>
+                    <th>Pagos</th>
+                    <th style={{ textAlign: 'right' }}>Total recaudado</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {byPeriod.map(row => (
+                    <tr key={row.key}>
+                      <td><b style={{ color: 'var(--arib-navy)' }}>{row.label}</b></td>
+                      <td>{row.count}</td>
+                      <td style={{ textAlign: 'right' }}><b style={{ color: '#16a34a' }}>S/ {row.total.toFixed(2)}</b></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <Empty title="Sin recaudación en este alcance" text="Aún no hay pagos registrados para agrupar por periodo." />
+          )}
         </Panel>
       </div>
 

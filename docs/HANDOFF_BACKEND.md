@@ -2,7 +2,7 @@
 
 Este documento es para el desarrollador de **Backend**. Hay una versión hermana para Frontend en [`HANDOFF_FRONTEND.md`](HANDOFF_FRONTEND.md) — el **contrato de API** (sección 6) es el punto de contacto entre ambos documentos y debe mantenerse igual en los dos. Este documento cubre **Sprint 1** (verificación de pago manual, tal como está hoy el prototipo); la verificación **automática** contra una pasarela real es **Sprint 2**, documentado aparte en [`SPRINT2_PASARELA_PAGOS.md`](SPRINT2_PASARELA_PAGOS.md).
 
-> El prototipo de este repositorio (React + `localStorage`, sin backend) no es el Sprint 1 recortado: es la **especificación viva y ya probada** del comportamiento que ustedes deben reproducir con datos reales. No rediseñen las reglas de negocio desde cero — pórtenlas. Todo lo que hoy es una función en `src/workflowEngine.js` ya está pensado y probado (`tests/workflow.test.mjs` + `tests/catalog-regression.test.mjs`, 29 casos).
+> El prototipo de este repositorio (React + `localStorage`, sin backend) no es el Sprint 1 recortado: es la **especificación viva y ya probada** del comportamiento que ustedes deben reproducir con datos reales. No rediseñen las reglas de negocio desde cero — pórtenlas. Todo lo que hoy es una función en `src/workflowEngine.js` ya está pensado y probado (`tests/workflow.test.mjs` + `tests/catalog-regression.test.mjs`, 33 casos).
 
 ---
 
@@ -12,9 +12,8 @@ Este documento es para el desarrollador de **Backend**. Hay una versión hermana
 Solicitante → Mesa de Partes → Dirección (proveído obligatorio) → Oficina(s) según ruta → Mesa de Partes (cierre)
 ```
 
-- **Mesa de Partes** y **Dirección** son pasos fijos: nunca configurables, nunca salteables, nunca se repiten dentro de una ruta.
-- Ninguna oficina puede recibir un expediente sin que Dirección haya emitido antes su **proveído** (V°B° + ruta activada).
-- Cada trámite tiene una **ruta canónica versionada** (plantilla). Dirección puede ajustarla puntualmente al emitir el proveído sin alterar la plantilla publicada — el expediente guarda su propia copia (`route_plan`, `route_version`).
+- **Mesa de Partes** y **Dirección** son el flujo estándar, y lo siguen todos los trámites salvo excepción explícita: nunca se repiten dentro de una ruta, y ninguna oficina puede recibir un expediente sin que Dirección haya emitido antes su **proveído** (V°B° + ruta activada) — **salvo que el trámite tenga `requires_direccion = false`** (decisión 2026-09-28, ver más abajo), en cuyo caso el expediente nace directo en `EN_OFICINA`, sin proveído, y al terminar su ruta se cierra directo en `FINALIZADO` sin volver a pasar por Mesa de Partes. Por defecto todo trámite tiene `requires_direccion = true`; el admin lo desactiva trámite por trámite solo cuando la institución confirma que ese trámite se atiende sin proveído.
+- Cada trámite tiene una **ruta canónica versionada** (plantilla). Dirección puede ajustarla puntualmente al emitir el proveído sin alterar la plantilla publicada — el expediente guarda su propia copia (`route_plan`, `route_version`). Para un trámite con `requires_direccion = false` no hay proveído que active la ruta: el `route_plan` se copia directamente de la plantilla publicada (`workflow_configs.route` vigente) al crear el expediente.
 - Una oficina puede **observar** un expediente (regresa al solicitante), **completarlo** (avanza al siguiente paso de la ruta o cierra la ruta) o **redirigirlo** de forma extraordinaria a otra oficina fuera de la ruta (se reinserta y continúa el resto de la ruta original después).
 
 ## 2. Máquina de estados que el backend debe implementar
@@ -23,10 +22,12 @@ Solicitante → Mesa de Partes → Dirección (proveído obligatorio) → Oficin
 |---|---|---|
 | `SOLICITUD_VIRTUAL` | El solicitante envió su FUT virtual; ya tiene N.° de expediente pero Secretaría no lo validó | → `EN_DIRECCION` vía `registerVirtual` |
 | `EN_DIRECCION` | Registrado (físico o virtual validado), esperando proveído | → `EN_OFICINA` vía `issueProveido` |
-| `EN_OFICINA` | En atención en la oficina actual, según `route_plan[route_index]` | → `EN_OFICINA` (siguiente paso), `OBSERVADO`, o `RESPUESTA_MESA` (si era el último paso) |
+| `EN_OFICINA` | En atención en la oficina actual, según `route_plan[route_index]` | → `EN_OFICINA` (siguiente paso), `OBSERVADO`, `RESPUESTA_MESA` (último paso, trámite estándar), o `FINALIZADO` directo (último paso, trámite con `requires_direccion = false`) |
 | `OBSERVADO` | La oficina actual pidió subsanación; expediente regresó al solicitante | → `EN_OFICINA` (misma oficina) vía `correctObservation` |
 | `RESPUESTA_MESA` | La ruta terminó; expediente vuelve a Mesa de Partes para notificar/entregar | → `FINALIZADO` vía `finalizeCase` |
 | `FINALIZADO` | Cerrado y entregado | Estado terminal |
+
+**Trámite con `requires_direccion = false` (decisión 2026-09-28):** `createVirtual`/`createPhysical` no entran por `SOLICITUD_VIRTUAL`/`EN_DIRECCION` — nacen directo en `EN_OFICINA`, con `oficina_actual_id` y `route_plan` tomados de la ruta publicada del trámite (`workflow_configs.route` vigente; si el trámite no tiene ruta publicada, no se puede crear el expediente por esta vía). `completeOfficeStep` en el último paso de la ruta pasa directo a `FINALIZADO` (nunca a `RESPUESTA_MESA`) — la propia oficina que atendió el último paso cierra el trámite, sin que Secretaría intervenga.
 
 **Importante:** el N.° de expediente (`numero`) se asigna una sola vez, en el momento de la creación (virtual o física) — nunca se reasigna ni se recalcula después. Antes el prototipo manejaba dos numeraciones distintas (código temporal vs. definitivo) y generaba confusión real a los usuarios; quedó corregido y **debe** mantenerse así (ver test `el N.° de expediente se asigna desde el envío virtual, no al registrar`). En una base de datos real, usen una secuencia/`bigserial` con el `INSERT` dentro de una transacción — no calculen el siguiente número en la aplicación leyendo un `MAX()` sin bloqueo, porque con usuarios concurrentes van a duplicar números.
 
@@ -45,7 +46,7 @@ Repliquen exactamente esos mensajes de error como respuestas de la API (código 
 ## 3. Invariantes que el backend debe validar sí o sí (nunca confiar en que el frontend ya lo validó)
 
 1. `route_plan` nunca puede contener `mesa_partes` ni `direccion`, ni repetir una oficina (`validateWorkflowRoute`).
-2. No se puede completar un paso en Tesorería si el trámite tiene `monto > 0` y no existe un pago con `estado = 'PAGADO'` para ese expediente (`completeOfficeStep` + `requiresPayment`).
+2. No se puede completar un paso en la oficina actual si el trámite tiene `monto > 0`, esa oficina tiene `collects_payment = true`, y no existe un pago con `estado = 'PAGADO'` para ese expediente (`completeOfficeStep` + `requiresPayment`). **`collects_payment` ya no es exclusivo de Tesorería** (decisión 2026-09-28, ver invariante 11): cualquier oficina con esa capacidad activada cobra los trámites cuya ruta pase por ella.
 3. El N.° de expediente se asigna una sola vez, nunca se reasigna.
 4. No se puede eliminar una oficina o un trámite que tenga expedientes asociados o esté en una ruta publicada (`canDeleteOffice`, `canDeleteProcedure`).
 5. El rol `admin` no puede perder acceso a la vista de catálogos (`validateRolePermissions`) — es la única forma de revertir un error de permisos; si se pierde, nadie puede arreglarlo sin acceso directo a la base de datos.
@@ -54,6 +55,12 @@ Repliquen exactamente esos mensajes de error como respuestas de la API (código 
 8. Cada acción sobre un expediente (proveído, observar, completar, redirigir, pago, finalizar) debe verificarse contra el permiso del **usuario autenticado en el servidor** — el frontend solo oculta botones para UX, eso no es seguridad.
 9. **Origen de registro (decisión 2026-09-24):** cada trámite declara en `allowed_creators` quién puede generarlo — el propio solicitante (`applicant`), Secretaría (`secretaria`), o la oficina especializada de su ruta (`office`). Al crear un expediente, validen que el origen de la petición esté en `allowed_creators` del trámite antes de insertar — si no, 422 con "Este trámite no admite ser iniciado desde este origen." Por defecto (catálogo migrado) es `['applicant','secretaria']`; ningún trámite hoy tiene `office` habilitado porque el catálogo del Grupo 5 (admisión/matrícula/cursos) aún no está cargado — esta validación ya está lista para cuando se agregue. Si el origen es `office`, verifiquen además que la oficina autenticada esté en el `route` publicado de ese trámite — una oficina no debe poder originar el trámite de otra.
 10. **Permisos por oficina (decisión 2026-09-24):** el rol `oficina` da un permiso/vista por defecto a las 12 oficinas, pero el Administrador puede personalizar una oficina específica (ej. que solo Tesorería vea "Caja y pagos" y registre pagos, o que solo Comisión de Admisión pueda iniciar expedientes). Al autorizar una acción de un usuario con `role = 'oficina'`, resuelvan primero si existe un override en `office_permissions` para su `office_id`; si existe, usen exactamente esos `views`/`permissions` en vez de los del rol — no los combinen ni los unan. Sin override, la oficina usa el rol `oficina` tal cual. Esto es autorización real, no solo UI: el backend debe aplicar esta resolución en cada policy/middleware, igual que ya hace con el rol.
+11. **Sub-tesorerías y trámites sin Mesa de Partes/Dirección (decisión 2026-09-28):** el ingeniero de la institución pidió que comisiones como Admisión o Formación Continua puedan cobrar directamente los pagos de sus propios trámites ("sub-tesorerías"), y que algunos trámites de esas comisiones no pasen por Mesa de Partes ni Dirección. Se modeló como dos capacidades independientes, no como un tipo de entidad nuevo:
+   - **`offices.collects_payment`** (boolean, default `false`, `true` en la fila de Tesorería): cualquier oficina con este flag activo cobra pagos igual que Tesorería (ver invariante 2). No hay una tabla ni un tipo "sub-tesorería" separado — es la misma oficina de siempre con una capacidad más. Una oficina con `collects_payment = true` que no sea Tesorería es, en la UI, una "sub-tesorería de Tesorería" — puramente presentacional (agrupación visual), no cambia la autorización ni el modelo de datos.
+   - **`procedures.requires_direccion`** (boolean, default `true`): controla si el trámite pasa por el flujo estándar (registro + proveído, ver sección 1) o nace directo en la primera oficina de su ruta publicada.
+   - El usuario que opera una sub-tesorería se crea y se asigna igual que cualquier otro usuario de oficina (`users.office_id` apuntando a esa oficina) — no hay un flujo de cuentas distinto. Si la persona a cargo cambia, se reasigna editando ese mismo usuario.
+   - Cada pago (`pagos`, ver sección 4.3) ahora registra `oficina_id`: quién lo cobró. Es indispensable para el reporte de cierre por periodo (siguiente punto) y para que "Caja y pagos" de una oficina no-Tesorería muestre solo lo suyo.
+   - **Cierre de caja por periodo:** cada oficina con `collects_payment = true` necesita ver sus propios pagos agrupados por semana/mes/trimestre/año, para su propia rendición de cuentas — independiente del reporte continuo de Tesorería. En el prototipo es una vista derivada en el cliente (agrupa `pagos.oficina_id` + `pagos.fecha_pago` por periodo); no hay tabla nueva que replicar, solo asegúrense de que el endpoint de pagos permita filtrar por `oficina_id` y por rango de fechas con suficiente granularidad para que el frontend arme esos periodos.
 
 ## 4. Módulo de pagos (Caja) — lo que más depende de ustedes
 
@@ -77,6 +84,7 @@ Repliquen exactamente esos mensajes de error como respuestas de la API (código 
 create table pagos (
   id                bigserial primary key,
   expediente_id     bigint not null references expedientes(id),
+  oficina_id        bigint not null references offices(id), -- quién cobró (Tesorería o una sub-tesorería, ver invariante 11)
   monto             numeric(10,2) not null,
   metodo            varchar(40) not null,   -- 'yape_plin' | 'tarjeta_pos' | 'deposito' | 'transferencia' | 'efectivo'
   voucher           varchar(120) not null,
@@ -112,6 +120,7 @@ create table offices (
   short_code varchar(10) not null,
   color varchar(10),
   provisional boolean not null default false,  -- oficina aún no confirmada por la institución (ej. Fedatario)
+  collects_payment boolean not null default false, -- true en Tesorería; el admin lo activa en otras oficinas para volverlas sub-tesorería (decisión 2026-09-28, invariante 11)
   correspondence_note text,                     -- nota de correspondencia con el TUSNE mientras es provisional
   created_at timestamp, updated_at timestamp
 );
@@ -130,6 +139,7 @@ create table procedures (
   valid_from date,
   verification_status varchar(20) not null default 'pending', -- 'pending' | 'confirmed'
   allowed_creators jsonb not null default '["applicant","secretaria"]', -- subconjunto de 'applicant'|'secretaria'|'office'
+  requires_direccion boolean not null default true, -- false = nace directo en la ruta publicada, sin proveído (decisión 2026-09-28, invariante 11)
   created_at timestamp, updated_at timestamp
 );
 
@@ -222,7 +232,7 @@ PUT    /api/offices/{id}                  (admin)
 DELETE /api/offices/{id}                  (admin, valida canDeleteOffice)
 
 GET    /api/procedures
-POST   /api/procedures                    (admin)  { name, category, requirementsList[], sla, tariffStatus, monto, active, source, validFrom, route[] }
+POST   /api/procedures                    (admin)  { name, category, requirementsList[], sla, tariffStatus, monto, active, source, validFrom, route[], allowedCreators[], requiresDireccion }
 PUT    /api/procedures/{id}
 DELETE /api/procedures/{id}               (admin, valida canDeleteProcedure)
 POST   /api/procedures/{id}/publish-route (admin/direccion)  { route[] } -> nueva workflow_config version
@@ -239,9 +249,9 @@ PUT    /api/role-permissions/{role}       (admin)  { views[], permissions[] }
 
 GET    /api/expedientes                   ?estado=&oficina=&search=  (filtrado según rol del usuario autenticado)
 GET    /api/expedientes/{id}
-POST   /api/expedientes/virtual           (estudiante/docente)  crea con estado SOLICITUD_VIRTUAL, valida allowed_creators='applicant'
-POST   /api/expedientes/fisico            (secretaria)          crea con estado EN_DIRECCION, valida allowed_creators='secretaria'
-POST   /api/expedientes/oficina           (oficina, permiso case.originate)  crea con estado EN_DIRECCION, valida allowed_creators='office' y que la oficina esté en route[]
+POST   /api/expedientes/virtual           (estudiante/docente)  crea con estado SOLICITUD_VIRTUAL, valida allowed_creators='applicant'; si requires_direccion=false, crea directo en EN_OFICINA con route_plan = ruta publicada
+POST   /api/expedientes/fisico            (secretaria)          crea con estado EN_DIRECCION, valida allowed_creators='secretaria'; si requires_direccion=false, crea directo en EN_OFICINA con route_plan = ruta publicada
+POST   /api/expedientes/oficina           (oficina, permiso case.originate)  crea con estado EN_DIRECCION, valida allowed_creators='office' y que la oficina esté en route[]; si requires_direccion=false, crea directo en EN_OFICINA con route_plan = ruta publicada
 POST   /api/expedientes/{id}/registrar-virtual  (secretaria)
 POST   /api/expedientes/{id}/proveido           (direccion)     { proveido, routePlan[] }
 POST   /api/expedientes/{id}/observar           (oficina)       { text }
@@ -249,10 +259,10 @@ POST   /api/expedientes/{id}/subsanar           (solicitante)   { adjuntos[] }
 POST   /api/expedientes/{id}/completar          (oficina)       { note, document }
 POST   /api/expedientes/{id}/redirigir          (oficina)       { officeId, note }
 POST   /api/expedientes/{id}/finalizar          (secretaria)
-POST   /api/expedientes/{id}/pago               (oficina=tesoreria)  { monto, metodo, voucher, fecha, comprobante(file) }
+POST   /api/expedientes/{id}/pago               (oficina con collects_payment=true)  { monto, metodo, voucher, fecha, comprobante(file) }
 
-GET    /api/reportes/caja                 ?desde=&hasta=&procedure_id=  (admin) -> totales, desglose, historial paginado
-GET    /api/reportes/caja/export.csv      (admin)
+GET    /api/reportes/caja                 ?desde=&hasta=&oficina_id=&procedure_id=&granularidad=semana|mes|trimestre|año  (admin: cualquier oficina o todas; oficina con collects_payment=true: acotar implícitamente a la suya) -> totales, desglose por periodo, historial paginado
+GET    /api/reportes/caja/export.csv      (idem)
 ```
 
 Cada endpoint de acción sobre expediente debe: verificar el permiso del usuario autenticado (policy/middleware), ejecutar la validación de dominio (sección 3), e insertar la fila correspondiente en `expediente_historial` — todo dentro de la misma transacción.
@@ -285,7 +295,7 @@ Cada endpoint de acción sobre expediente debe: verificar el permiso del usuario
 | `src/workflowEngine.js` | Todas las reglas de negocio puras, con sus mensajes de error exactos |
 | `src/models/procedure.js` | Normalización del trámite, requisitos estructurados (`requirementsList`), `canRequestProcedure(proc, origin)`/`getAllowedCreators` y el snapshot inmutable (`captureProcedure`/`preserveProcedureTerms`) — reprodúzcanlo tal cual, es la parte más nueva y más fácil de romper por accidente |
 | `src/views/OfficeWorkbenchView.jsx` (bloque "Nueva solicitud") | Cómo la oficina especializada origina un expediente: filtra trámites por `allowedCreators` + pertenencia a su propia ruta antes de mostrar el formulario |
-| `tests/workflow.test.mjs` + `tests/catalog-regression.test.mjs` | 29 casos de prueba — la especificación de comportamiento más confiable que existe |
+| `tests/workflow.test.mjs` + `tests/catalog-regression.test.mjs` | 33 casos de prueba — la especificación de comportamiento más confiable que existe |
 | `src/data/catalogs.js` | Catálogo maestro de oficinas (incl. provisionales), ~38 trámites del TUSNE 2026 con requisitos estructurados y estado de tarifa, roles, vistas y permisos posibles |
 | `src/data/seed.js` | Datos de ejemplo — sirven directamente como fixtures/seeders de Laravel |
 | `src/repositories/prototypeRepository.js` | Qué se persiste hoy y con qué forma — mapea casi 1 a 1 a qué tablas hacen falta |

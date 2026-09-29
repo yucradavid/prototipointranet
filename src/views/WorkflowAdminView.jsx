@@ -23,28 +23,39 @@ const edgeStyle = {
   style: { stroke: '#0284c7', strokeWidth: 2.5 },
   animated: false
 }
-const fixedIds = ['start', 'direccion', 'end']
-const fixedData = {
-  start: { kind: 'start', label: 'Mesa de Partes', subtitle: 'Recepción y Registro', locked: true, color: '#0284c7' },
-  direccion: { kind: 'direction', label: 'Dirección General', subtitle: 'Proveído Institucional', locked: true, color: '#091a2b' },
-  end: { kind: 'end', label: 'Mesa de Partes', subtitle: 'Cierre y Notificación', locked: true, color: '#10b981' }
+// Nodos fijos del lienzo. Cuando el trámite está configurado sin Mesa de Partes ni
+// Dirección (requiresDireccion:false), no existe un nodo 'direccion' — el lienzo va
+// directo de 'start' (Inicio) a la primera oficina, y 'end' cierra automáticamente con
+// la última oficina de la ruta en vez de devolver el expediente a Mesa de Partes.
+function getFixedData(skip, skipMesa = false) {
+  const start = { kind: 'start', label: skipMesa ? 'Inicio directo' : 'Mesa de Partes', subtitle: skipMesa ? 'Sin Mesa de Partes' : 'Recepción y Registro', locked: true, color: '#0284c7' }
+  const end = { kind: 'end', label: skipMesa ? 'Fin' : 'Mesa de Partes', subtitle: skipMesa ? 'Cierre automático por la última oficina' : 'Cierre y Notificación', locked: true, color: '#10b981' }
+  return { start, ...(skip ? {} : { direccion: { kind: 'direction', label: 'Dirección General', subtitle: 'Proveído Institucional', locked: true, color: '#091a2b' } }), end }
 }
 
-const officeData = (id, offices, onDelete) => ({
-  kind: 'office',
-  label: officeName(id),
-  subtitle: 'Paso Especializado',
-  officeId: id,
-  locked: false,
-  color: offices.find(x => x.id === id)?.color || '#6366f1',
-  onDelete
-})
+const officeData = (id, offices, onDelete) => {
+  const office = offices.find(x => x.id === id)
+  const subtitle = !office?.collectsPayment ? 'Paso Especializado'
+    : id === 'tesoreria' ? 'Paso Especializado · Caja principal'
+    : 'Paso Especializado · Sub-tesorería'
+  return {
+    kind: 'office',
+    label: officeName(id),
+    subtitle,
+    officeId: id,
+    locked: false,
+    color: office?.color || '#6366f1',
+    onDelete
+  }
+}
 
-function layoutForRoute(route, offices, onDelete) {
-  const ids = ['start', 'direccion', ...route.map((x, i) => `office-${x}-${i}`), 'end']
+function layoutForRoute(route, offices, onDelete, skip = false, skipMesa = false) {
+  const fixedData = getFixedData(skip, skipMesa)
+  const ids = ['start', ...(skip ? [] : ['direccion']), ...route.map((x, i) => `office-${x}-${i}`), 'end']
+  const officeOffset = 1 + (skip ? 0 : 1)
   const nodes = ids.map((id, i) => {
     const isOffice = id.startsWith('office-')
-    const officeId = isOffice ? route[i - 2] : null
+    const officeId = isOffice ? route[i - officeOffset] : null
     return {
       id,
       type: 'route',
@@ -63,18 +74,21 @@ function layoutForRoute(route, offices, onDelete) {
   return { nodes, edges }
 }
 
-function extractRoute(nodes, edges) {
-  const startOut = edges.filter(e => e.source === 'start')
-  if (startOut.length !== 1 || startOut[0].target !== 'direccion') {
-    throw new Error('El paso inicial obligatorio Mesa de Partes → Dirección no puede eliminarse ni modificarse.')
+function extractRoute(nodes, edges, skip = false, skipMesa = false) {
+  let current = 'start'
+  if (!skip) {
+    const startOut = edges.filter(e => e.source === 'start')
+    if (startOut.length !== 1 || startOut[0].target !== 'direccion') {
+      throw new Error('El paso inicial obligatorio Mesa de Partes → Dirección no puede eliminarse ni modificarse.')
+    }
+    current = 'direccion'
   }
   const route = []
-  let current = 'direccion'
   const seen = new Set([current])
   for (let guard = 0; guard < 30; guard++) {
     const outgoing = edges.filter(e => e.source === current)
     if (outgoing.length !== 1) {
-      throw new Error(current === 'direccion' ? 'Dirección debe tener exactamente una salida conectada.' : 'Cada oficina debe tener una sola salida conectada.')
+      throw new Error(current === 'direccion' ? 'Dirección debe tener exactamente una salida conectada.' : current === 'start' ? 'El nodo de Inicio debe tener exactamente una salida conectada.' : 'Cada oficina debe tener una sola salida conectada.')
     }
     const next = outgoing[0].target
     if (next === 'end') {
@@ -94,7 +108,7 @@ function extractRoute(nodes, edges) {
   throw new Error('No se encontró el nodo final de cierre de ruta.')
 }
 
-function Designer({ procedureId, config, offices, monto, onPublish, onDirtyChange }) {
+function Designer({ procedureId, config, offices, monto, skipsDireccion, skipsMesaPartes, onPublish, onDirtyChange }) {
   // Referencia estable: los nodos se construyen en varios momentos (carga inicial,
   // cambio de trámite, soltar una oficina nueva) y todos deben recibir la MISMA
   // función de borrado, así que se define antes y se pasa explícitamente.
@@ -122,7 +136,7 @@ function Designer({ procedureId, config, offices, monto, onPublish, onDirtyChang
     setMessage({ text: 'Oficina quitada del lienzo. El recorrido se reconectó automáticamente; recuerda "Publicar nueva versión" para guardar el cambio.', tone: 'warn' })
   }, [])
 
-  const initial = useMemo(() => layoutForRoute(config.route, offices, removeNode), [procedureId])
+  const initial = useMemo(() => layoutForRoute(config.route, offices, removeNode, skipsDireccion, skipsMesaPartes), [procedureId])
   const [nodes, setNodes, onNodesChange] = useNodesState(initial.nodes)
   const [edges, setEdges, onEdgesChange] = useEdgesState(initial.edges)
   const { screenToFlowPosition } = useReactFlow()
@@ -175,7 +189,7 @@ function Designer({ procedureId, config, offices, monto, onPublish, onDirtyChang
     // publicar desde este mismo diseñador ya deja el lienzo en el estado correcto, y
     // volver a montarlo desde config.route borraría el mensaje de éxito recién mostrado
     // (y reordenaría los nodos que el usuario acaba de acomodar).
-    const x = layoutForRoute(config.route, offices, removeNode)
+    const x = layoutForRoute(config.route, offices, removeNode, skipsDireccion, skipsMesaPartes)
     setNodes(x.nodes)
     setEdges(x.edges)
     setMessage(null)
@@ -192,7 +206,7 @@ function Designer({ procedureId, config, offices, monto, onPublish, onDirtyChang
   useEffect(() => {
     let isDirty
     try {
-      const route = extractRoute(nodes, edges)
+      const route = extractRoute(nodes, edges, skipsDireccion, skipsMesaPartes)
       isDirty = JSON.stringify(route) !== JSON.stringify(config.route)
     } catch {
       isDirty = true
@@ -240,8 +254,8 @@ function Designer({ procedureId, config, offices, monto, onPublish, onDirtyChang
 
   const autoArrange = () => {
     try {
-      const route = extractRoute(nodes, edges)
-      const x = layoutForRoute(route, offices)
+      const route = extractRoute(nodes, edges, skipsDireccion)
+      const x = layoutForRoute(route, offices, undefined, skipsDireccion, skipsMesaPartes)
       pushHistory()
       setNodes(x.nodes)
       setEdges(x.edges)
@@ -253,12 +267,12 @@ function Designer({ procedureId, config, offices, monto, onPublish, onDirtyChang
 
   const publish = () => {
     try {
-      const route = extractRoute(nodes, edges)
+      const route = extractRoute(nodes, edges, skipsDireccion)
       const errs = validateWorkflowRoute(route, offices)
       if (errs.length) throw new Error(errs[0])
       onPublish(procedureId, route)
-      const paymentWarning = monto > 0 && !route.includes('tesoreria')
-        ? ' ⚠ Este trámite tiene costo y esta ruta no incluye Tesorería: nadie validará el pago.'
+      const paymentWarning = monto > 0 && !route.some(id => offices.find(o => o.id === id)?.collectsPayment)
+        ? ' ⚠ Este trámite tiene costo y esta ruta no incluye ninguna oficina habilitada para cobrar pagos: nadie validará el pago.'
         : ''
       setMessage({
         text: `Publicada exitosamente nueva versión (v${(config.version || 1) + 1}) con ruta: ${route.map(officeName).join(' → ')}${paymentWarning}`,
@@ -271,10 +285,10 @@ function Designer({ procedureId, config, offices, monto, onPublish, onDirtyChang
 
   const simulate = () => {
     try {
-      const route = extractRoute(nodes, edges)
+      const route = extractRoute(nodes, edges, skipsDireccion)
       const path = [
         'start',
-        'direccion',
+        ...(skipsDireccion ? [] : ['direccion']),
         ...route.map((x, i) => nodes.find(n => n.data.officeId === x && !['start', 'direccion', 'end'].includes(n.id))?.id).filter(Boolean),
         'end'
       ]
@@ -327,7 +341,13 @@ function Designer({ procedureId, config, offices, monto, onPublish, onDirtyChang
         <div className="locked-note" style={{ background: 'var(--arib-surface-subtle)', padding: 10, borderRadius: 8, margin: '8px 0 12px' }}>
           <LockKeyhole size={14} style={{ color: 'var(--arib-navy-light)', flexShrink: 0 }} />
           <span style={{ fontSize: 11, color: 'var(--arib-slate)' }}>
-            Mesa de Partes (Inicio/Fin) y Dirección General son nodos fijos por el marco normativo institucional.
+            {skipsDireccion && skipsMesaPartes
+              ? 'Este trámite está configurado sin Mesa de Partes ni Dirección: inicia directamente en la primera oficina.'
+              : skipsDireccion
+                ? 'Mesa de Partes es el inicio; Dirección está desactivada para este trámite.'
+                : skipsMesaPartes
+                  ? 'El trámite va directo a Dirección y luego continúa por la ruta de oficinas.'
+                  : 'Mesa de Partes (Inicio/Fin) y Dirección General son pasos fijos de entrada.'}
           </span>
         </div>
 
@@ -353,6 +373,9 @@ function Designer({ procedureId, config, offices, monto, onPublish, onDirtyChang
                   <b style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.name}</b>
                   {o.provisional && (
                     <span style={{ fontSize: 10, color: '#b45309', fontWeight: 700 }}>⚠ Provisional</span>
+                  )}
+                  {o.collectsPayment && (
+                    <span style={{ fontSize: 10, color: '#15803d', fontWeight: 700 }}>{o.id === 'tesoreria' ? 'Caja principal' : 'Sub-tesorería'}</span>
                   )}
                 </div>
                 <button
@@ -471,6 +494,8 @@ export default function WorkflowAdminView({
   const list = fuzzyFilter(procedures, search, p => `${p.name} ${p.category}`)
   const p = procedures.find(x => x.id === procedureId) || procedures[0]
   const config = workflows[p?.id] || { version: 1, route: [], updatedAt: 'Hoy' }
+  const skip = p?.requiresDireccion === false
+  const skipMesa = p?.requiresMesaPartes === false
 
   const handleSaveProcedure = data => {
     const id = onSaveProcedure(data)
@@ -588,23 +613,22 @@ export default function WorkflowAdminView({
                   </span>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
-                  <b style={{ color: 'var(--arib-primary)' }}>Mesa de Partes</b>
-                  <i style={{ fontStyle: 'normal', color: 'var(--arib-navy-light)' }}>→</i>
-                  <b style={{ color: 'var(--arib-navy)' }}>Dirección General</b>
+                  {!skipMesa && <><b style={{ color: 'var(--arib-primary)' }}>Mesa de Partes</b><i style={{ fontStyle: 'normal', color: 'var(--arib-navy-light)' }}>→</i></>}
+                  {!skip && <><b style={{ color: 'var(--arib-navy)' }}>Dirección General</b><i style={{ fontStyle: 'normal', color: 'var(--arib-navy-light)' }}>→</i></>}
                   {config.route.map(id => (
                     <React.Fragment key={id}>
-                      <i style={{ fontStyle: 'normal', color: 'var(--arib-navy-light)' }}>→</i>
                       <b style={{ color: offices.find(o => o.id === id)?.color || 'var(--arib-primary)' }}>
                         {officeName(id)}
                         {offices.find(o => o.id === id)?.provisional && (
                           <span style={{ fontSize: 10, color: '#b45309', marginLeft: 3 }}>⚠</span>
                         )}
                       </b>
+                      <i style={{ fontStyle: 'normal', color: 'var(--arib-navy-light)' }}>→</i>
                     </React.Fragment>
                   ))}
-                  <i style={{ fontStyle: 'normal', color: 'var(--arib-navy-light)' }}>→</i>
-                  <b style={{ color: 'var(--arib-success)' }}>Cierre y Entrega</b>
+                  <b style={{ color: 'var(--arib-success)' }}>{skip ? 'Finalizado por la última oficina' : 'Cierre y Entrega'}</b>
                 </div>
+                {(skip || skipMesa) && <div style={{ marginTop: 6, fontSize: 11, color: '#b45309', fontWeight: 600 }}>⚠ Se desactivó {skipMesa ? 'Mesa de Partes' : ''}{skipMesa && skip ? ' y ' : ''}{skip ? 'Dirección' : ''}; revisa el inicio de la ruta.</div>}
                 {config.note && (
                   <div style={{ marginTop: 8, fontSize: 11, color: '#64748b', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 6, padding: '6px 10px', display: 'flex', gap: 6 }}>
                     <span style={{ flexShrink: 0 }}>📋</span>
@@ -613,26 +637,30 @@ export default function WorkflowAdminView({
                 )}
               </div>
 
-              {p.monto > 0 && !config.route.includes('tesoreria') && (
+              {p.monto > 0 && !config.route.some(id => offices.find(o => o.id === id)?.collectsPayment) && (
                 <div className="rule-banner" style={{ marginBottom: 16 }}>
                   <AlertTriangle size={20} color="var(--arib-warning, #f59e0b)" style={{ flex: 'none' }} />
                   <div>
-                    <b>Ruta publicada sin paso de Tesorería</b>
+                    <b>Ruta publicada sin oficina que cobre pagos</b>
                     <span>
-                      Este trámite tiene un costo de S/ {Number(p.monto).toFixed(2)}, pero la ruta actualmente publicada (v{config.version || 1}) no incluye Tesorería —
-                      nadie va a validar el pago cuando Dirección use esta plantilla. Agrega Tesorería al lienzo y publica una nueva versión si esto no es intencional.
+                      Este trámite tiene un costo de S/ {Number(p.monto).toFixed(2)}, pero la ruta actualmente publicada (v{config.version || 1}) no incluye ninguna oficina habilitada para cobrar (ej. Tesorería o una sub-tesorería) —
+                      nadie va a validar el pago. Agrega una oficina con esa capacidad y publica una nueva versión si esto no es intencional.
                     </span>
                   </div>
                 </div>
               )}
 
               {/* ReactFlow Canvas */}
-              <ReactFlowProvider>
+              {/* key incluye `skip`: si se edita el trámite abierto y cambia requiresDireccion,
+                  fuerza un remount limpio del lienzo (el efecto interno solo reconstruye por
+                  cambio de procedureId, a propósito, para no perder trabajo sin publicar). */}
+              <ReactFlowProvider key={`${p.id}-${skip}-${skipMesa}`}>
                 <Designer
                   procedureId={p.id}
                   config={config}
                   offices={offices}
                   monto={p.monto}
+                  skipsDireccion={skip}
                   onPublish={onPublish}
                   onDirtyChange={setDirty}
                 />

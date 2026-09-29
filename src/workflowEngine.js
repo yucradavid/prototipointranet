@@ -1,5 +1,5 @@
 import { captureProcedure, canRequestProcedure } from './models/procedure.js'
-import { officeName, procedureById, procedureForExpediente, HOLIDAYS } from './data/catalogs.js'
+import { officeName, officeById, procedureById, procedureForExpediente, HOLIDAYS } from './data/catalogs.js'
 
 // ─── Calendario de días hábiles ───────────────────────────────────────────────
 // Convierte una fecha en clave 'YYYY-MM-DD' para comparar con HOLIDAYS.
@@ -46,28 +46,57 @@ function registrationTerms(data,origin){
 
 const event=(actor,action,text,time)=>({time,actor,action,text})
 
-export function createVirtual(data, numero, time, actor){
+const requiresMesaPartes = proc => proc?.requiresMesaPartes !== undefined ? proc.requiresMesaPartes !== false : proc?.requiresDireccion !== false
+
+// `workflows` permite consultar la ruta publicada del trámite. Es necesaria cuando el
+// trámite está configurado sin Mesa de Partes ni Dirección (requiresDireccion:false): en
+// ese caso no hay proveído que active la ruta, así que se activa automáticamente desde la
+// ruta publicada al momento del registro.
+export function createVirtual(data, numero, time, actor, workflows={}){
   const tracking=`ARIB-${numero}`
-  return {...data,procedureSnapshot:registrationTerms(data,'applicant'),id:`sol-${Date.now()}`,numero,tracking,canal:'Virtual',tipoDocumento:'FUT',estado:'SOLICITUD_VIRTUAL',oficinaActual:'mesa_partes',firmaSecretaria:'',vistoBuenoDireccion:'',proveido:'',routePlan:[],routeIndex:-1,routeVersion:null,respuesta:'',documentoRespuesta:'',observation:null,pago:null,pauseStartedAt:null,slaPausedMs:0,historial:[event(actor||'Solicitante','Envío virtual',`Envió FUT virtual. N.° de expediente ${numero} asignado. Pendiente de validación en Mesa de Partes.`,time)]}
+  const base={...data,procedureSnapshot:registrationTerms(data,'applicant'),id:`sol-${Date.now()}`,numero,tracking,canal:'Virtual',tipoDocumento:'FUT',firmaSecretaria:'',vistoBuenoDireccion:'',proveido:'',respuesta:'',documentoRespuesta:'',observation:null,pago:null,pauseStartedAt:null,slaPausedMs:0}
+  const proc=procedureForExpediente(data)
+  const route=workflows[data.procedureId]?.route||[]
+  const needsMesa=requiresMesaPartes(proc)
+  const needsDireccion=proc?.requiresDireccion!==false
+  if(!needsMesa&&!needsDireccion&&route.length){
+    return {...base,estado:'EN_OFICINA',oficinaActual:route[0],routePlan:[...route],routeIndex:0,routeVersion:workflows[data.procedureId]?.version||1,historial:[event(actor||'Solicitante','Envío virtual','Trámite sin pasos institucionales: derivado directamente a '+officeName(route[0])+'.',time)]}
+  }
+  if(!needsMesa&&needsDireccion){
+    return {...base,estado:'EN_DIRECCION',oficinaActual:'direccion',routePlan:[],routeIndex:-1,routeVersion:null,historial:[event(actor||'Solicitante','Envío virtual','Pendiente de proveído en Dirección.',time)]}
+  }
+  return {...base,estado:'SOLICITUD_VIRTUAL',oficinaActual:'mesa_partes',routePlan:[],routeIndex:-1,routeVersion:null,historial:[event(actor||'Solicitante','Envío virtual','Pendiente de validación en Mesa de Partes.',time)]}
 }
 
-export function registerVirtual(exp,time,actor){
+export function registerVirtual(exp,time,actor,workflows={}){
   if(exp.estado!=='SOLICITUD_VIRTUAL') throw new Error('Solo se puede registrar una solicitud virtual pendiente.')
-  return {...exp,estado:'EN_DIRECCION',oficinaActual:'direccion',firmaSecretaria:'Secretaría · recepción conforme',historial:[...exp.historial,event(actor||'Secretaría','Registro',`Validó el expediente N.° ${exp.numero}. Por regla crítica, fue remitido obligatoriamente a Dirección.`,time)]}
+  const proc=procedureForExpediente(exp)
+  const route=workflows[exp.procedureId]?.route||[]
+  if(proc?.requiresDireccion===false&&route.length){
+    return {...exp,estado:'EN_OFICINA',oficinaActual:route[0],firmaSecretaria:'Secretaría · recepción conforme',routePlan:[...route],routeIndex:0,routeVersion:workflows[exp.procedureId]?.version||1,historial:[...exp.historial,event(actor||'Secretaría','Registro','Validó el expediente y lo derivó directamente a '+officeName(route[0])+', sin proveído de Dirección.',time)]}
+  }
+  return {...exp,estado:'EN_DIRECCION',oficinaActual:'direccion',firmaSecretaria:'Secretaría · recepción conforme',historial:[...exp.historial,event(actor||'Secretaría','Registro','Validó el expediente y lo remitió a Dirección para proveído.',time)]}
 }
+
 
 // `origin` distingue quién está registrando: 'secretaria' (ingreso físico por ventanilla,
 // comportamiento histórico) u 'office' (la propia oficina especializada inicia el
 // expediente en nombre del solicitante, ej. Comisión de Admisión). Ambos generan un
 // expediente físico idéntico en estructura; solo cambia la validación de origen permitido
 // y el canal/actor que queda registrado en el historial.
-export function createPhysical(data,numero,time,actor,origin='secretaria'){
+export function createPhysical(data,numero,time,actor,origin='secretaria',workflows={}){
   const canal=origin==='office'?'Oficina':'Físico'
   const actorLabel=actor||(origin==='office'?'Oficina':'Secretaría')
-  const historialTexto=origin==='office'
-    ? `La oficina inició expediente N.° ${numero} y lo remitió obligatoriamente a Dirección.`
-    : `Registró expediente físico N.° ${numero} y lo remitió obligatoriamente a Dirección.`
-  return {...data,procedureSnapshot:registrationTerms(data,origin),id:`exp-${numero}`,numero,tracking:`ARIB-${numero}`,canal,tipoDocumento:'FUT',estado:'EN_DIRECCION',oficinaActual:'direccion',firmaSecretaria:'Secretaría · recepción conforme',vistoBuenoDireccion:'',proveido:'',routePlan:[],routeIndex:-1,routeVersion:null,respuesta:'',documentoRespuesta:'',observation:null,pago:null,pauseStartedAt:null,slaPausedMs:0,historial:[event(actorLabel,'Registro',historialTexto,time)]}
+  const base={...data,procedureSnapshot:registrationTerms(data,origin),id:`exp-${numero}`,numero,tracking:`ARIB-${numero}`,canal,tipoDocumento:'FUT',firmaSecretaria:'Secretaría · recepción conforme',vistoBuenoDireccion:'',proveido:'',respuesta:'',documentoRespuesta:'',observation:null,pago:null,pauseStartedAt:null,slaPausedMs:0}
+  const proc=procedureForExpediente(data)
+  const route=workflows[data.procedureId]?.route||[]
+  const needsDireccion=proc?.requiresDireccion!==false
+  if(!needsDireccion&&route.length){
+    const historialTexto=(origin==='office'?'La oficina inició':'Registró')+' expediente N.° '+numero+'. '+(!requiresMesaPartes(proc)?'Sin pasos institucionales; ':'Mesa de Partes registrado; ')+'derivado directamente a '+officeName(route[0])+'.'
+    return {...base,estado:'EN_OFICINA',oficinaActual:route[0],routePlan:[...route],routeIndex:0,routeVersion:workflows[data.procedureId]?.version||1,historial:[event(actorLabel,'Registro',historialTexto,time)]}
+  }
+  const historialTexto=origin==='office' ? 'La oficina inició expediente N.° '+numero+' y lo remitió a Dirección.' : 'Registró expediente físico N.° '+numero+' y lo remitió a Dirección.'
+  return {...base,estado:'EN_DIRECCION',oficinaActual:'direccion',routePlan:[],routeIndex:-1,routeVersion:null,historial:[event(actorLabel,'Registro',historialTexto,time)]}
 }
 
 export function issueProveido(exp,{proveido,routePlan,routeVersion},time,actor){
@@ -93,7 +122,7 @@ export function correctObservation(exp,{files=[]},time,actor){
 
 export function requiresPayment(exp){
   const proc=procedureForExpediente(exp)
-  return exp?.oficinaActual==='tesoreria'&&(proc?.monto||0)>0
+  return !!officeById(exp?.oficinaActual)?.collectsPayment&&(proc?.monto||0)>0
 }
 
 // El SLA institucional mide cuánto tarda el TRÁMITE en resolverse, no cuánto tarda el
@@ -116,11 +145,11 @@ function syncPause(exp){
 
 export function registerPayment(exp,{monto,metodo,voucher,fecha,comprobante},time,actor){
   if(exp.estado!=='EN_OFICINA') throw new Error('El expediente no está disponible para registrar un pago.')
-  if(exp.oficinaActual!=='tesoreria') throw new Error('El pago solo se registra en Tesorería.')
+  if(!officeById(exp.oficinaActual)?.collectsPayment) throw new Error('El pago solo se registra en una oficina habilitada para cobrar pagos (ej. Tesorería).')
   if(!(Number(monto)>0)) throw new Error('Ingresa el monto pagado.')
   if(!voucher?.trim()) throw new Error('Ingresa el N.° de operación o voucher.')
-  const pago={estado:'PAGADO',monto:Number(monto),metodo:metodo||'Depósito bancario',voucher:voucher.trim(),fecha:fecha||'',comprobante:comprobante?.trim()||'',registradoAt:time,registradoPor:actor||'Tesorería'}
-  return syncPause({...exp,pago,historial:[...exp.historial,event(actor||'Tesorería','Pago registrado',`Registró pago de S/ ${Number(monto).toFixed(2)} (${metodo||'Depósito bancario'}, Voucher ${voucher.trim()}).`,time)]})
+  const pago={estado:'PAGADO',monto:Number(monto),metodo:metodo||'Depósito bancario',voucher:voucher.trim(),fecha:fecha||'',comprobante:comprobante?.trim()||'',registradoAt:time,registradoPor:actor||officeName(exp.oficinaActual),oficinaId:exp.oficinaActual}
+  return syncPause({...exp,pago,historial:[...exp.historial,event(actor||officeName(exp.oficinaActual),'Pago registrado',`Registró pago de S/ ${Number(monto).toFixed(2)} (${metodo||'Depósito bancario'}, Voucher ${voucher.trim()}).`,time)]})
 }
 
 // Como control adicional, la corrección de un pago ya registrado (p.ej. un monto mal
@@ -147,6 +176,12 @@ export function completeOfficeStep(exp,{note='',document=''},time,actor){
     const next=exp.routePlan[nextIndex]
     return syncPause({...exp,estado:'EN_OFICINA',oficinaActual:next,routeIndex:nextIndex,historial:[...exp.historial,event(actor||officeName(current),'Paso completado',`${note?.trim()||'Atención conforme.'} Derivado automáticamente a ${officeName(next)}.`,time)]})
   }
+  // Un trámite configurado sin Mesa de Partes ni Dirección (requiresDireccion:false) tampoco
+  // vuelve a Mesa de Partes al cerrar: la última oficina de su ruta lo finaliza directamente.
+  const proc=procedureForExpediente(exp)
+  if(!requiresMesaPartes(proc)){
+    return syncPause({...exp,estado:'FINALIZADO',routeIndex:nextIndex,respuesta:note?.trim()||'Atención culminada según ruta configurada.',documentoRespuesta:document||`Respuesta_${exp.numero}.pdf`,historial:[...exp.historial,event(actor||officeName(current),'Ruta completada',`${note?.trim()||'Atención conforme.'} Trámite finalizado directamente por ${officeName(current)} (porque no requiere Mesa de Partes al cierre).`,time)]})
+  }
   return syncPause({...exp,estado:'RESPUESTA_MESA',oficinaActual:'mesa_partes',routeIndex:nextIndex,respuesta:note?.trim()||'Atención culminada según proveído.',documentoRespuesta:document||`Respuesta_${exp.numero}.pdf`,historial:[...exp.historial,event(actor||officeName(current),'Ruta completada',`${note?.trim()||'Atención conforme.'} Se devolvió el expediente a Mesa de Partes para entrega/cierre.`,time)]})
 }
 
@@ -156,17 +191,21 @@ export function finalizeCase(exp,time,actor){
 }
 
 export function routeProgress(exp){
-  const prefix=['mesa_partes','direccion']
   const route=exp.routePlan||[]
-  const all=[...prefix,...route,'mesa_partes_cierre']
+  const proc=procedureForExpediente(exp)
+  const needsMesa=requiresMesaPartes(proc)
+  const needsDireccion=proc?.requiresDireccion!==false
+  const prefix=[...(needsMesa?['mesa_partes']:[]),...(needsDireccion?['direccion']:[])]
+  const all=[...prefix,...route,...(needsMesa?['mesa_partes_cierre']:[])]
   let completed=0
-  if(exp.estado!=='SOLICITUD_VIRTUAL') completed=1
-  if(exp.vistoBuenoDireccion) completed=2
-  if(['EN_OFICINA','OBSERVADO','RESPUESTA_MESA','FINALIZADO'].includes(exp.estado)) completed=2+Math.max(0,exp.routeIndex)
-  if(['RESPUESTA_MESA','FINALIZADO'].includes(exp.estado)) completed=2+route.length
-  if(exp.estado==='FINALIZADO') completed=all.length
+  if(exp.estado==='EN_DIRECCION') completed=Math.max(0,prefix.indexOf('direccion'))
+  if(exp.vistoBuenoDireccion) completed=prefix.length
+  if(['EN_OFICINA','OBSERVADO'].includes(exp.estado)) completed=prefix.length+Math.max(0,exp.routeIndex)
+  if(exp.estado==='RESPUESTA_MESA') completed=prefix.length+route.length
+  if(exp.estado==='FINALIZADO') completed=needsMesa?all.length:prefix.length+route.length
   return {all,completed,total:all.length}
 }
+
 
 export function validateWorkflowRoute(route, offices = []){
   const errors=[]

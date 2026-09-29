@@ -141,9 +141,12 @@ export default function OfficeWorkbenchView({ officeId, items, offices, procedur
 
   const selected = items.find(x => x.id === selectedId) || queue[0]
   const procedure = procedureForExpediente(selected)
-  const needsPayment = officeId === 'tesoreria' && (procedure?.monto || 0) > 0
+  const needsPayment = !!offices.find(o => o.id === officeId)?.collectsPayment && (procedure?.monto || 0) > 0
   const isPaid = selected?.pago?.estado === 'PAGADO'
   const paymentPending = needsPayment && !isPaid
+  // Un trámite configurado sin Mesa de Partes ni Dirección no tiene proveído ni vuelve a
+  // Mesa de Partes al cerrar — varios textos fijos de esta bandeja asumían lo contrario.
+  const skipsDireccion = procedure?.requiresDireccion === false
 
   React.useEffect(() => {
     setNote('Atención conforme.')
@@ -332,7 +335,11 @@ export default function OfficeWorkbenchView({ officeId, items, offices, procedur
         <div ref={detailPanelRef} className="grid-cell-tight">
         <Panel
           title={selected ? `EXP ${selected.numero} · ${selected.asunto}` : 'Detalle de atención'}
-          subtitle={selected ? `Proveído de Dirección: "${selected.proveido || 'Conforme a la norma.'}"` : 'Selecciona un expediente para evaluar y resolver.'}
+          subtitle={
+            !selected ? 'Selecciona un expediente para evaluar y resolver.'
+              : skipsDireccion ? 'Trámite sin Mesa de Partes ni Dirección: activado directo, sin proveído.'
+              : `Proveído de Dirección: "${selected.proveido || 'Conforme a la norma.'}"`
+          }
           actions={selected && (
             <button className="btn ghost mobile-only-back" onClick={backToList}>
               <ArrowLeft size={14} /> Volver a la bandeja
@@ -346,7 +353,7 @@ export default function OfficeWorkbenchView({ officeId, items, offices, procedur
                 <StatusBadge status={selected.estado} />
                 <SlaBadge exp={selected} />
                 <Badge tone="info">
-                  Paso {selected.routeIndex + 1} de {selected.routePlan?.length || 1}
+                  Paso {Math.min(selected.routeIndex + 1, selected.routePlan?.length || 1)} de {selected.routePlan?.length || 1}
                 </Badge>
                 <Badge tone="neutral">Ruta v{selected.routeVersion || 1}</Badge>
                 {selected.canal && <Badge tone="neutral">Canal {selected.canal}</Badge>}
@@ -359,7 +366,7 @@ export default function OfficeWorkbenchView({ officeId, items, offices, procedur
                     Ruta de atención del expediente
                   </h4>
                   <span style={{ fontSize: 12, color: 'var(--arib-navy-light)' }}>
-                    Siguiente: <strong>{next ? officeName(next) : 'Mesa de Partes (Cierre)'}</strong>
+                    Siguiente: <strong>{next ? officeName(next) : skipsDireccion ? 'Finaliza aquí' : 'Mesa de Partes (Cierre)'}</strong>
                   </span>
                 </div>
                 <RouteStrip exp={selected} />
@@ -407,7 +414,7 @@ export default function OfficeWorkbenchView({ officeId, items, offices, procedur
                   {/* Requirements checklist for this procedure */}
                   <RequirementsBlock exp={selected} />
 
-                  {/* Payment / Caja box (only for Tesorería on paid procedures) */}
+                  {/* Payment / Caja box (solo si esta oficina cobra pagos, en trámites con costo) */}
                   {needsPayment && (
                     <div
                       className="observation-card"
@@ -511,7 +518,9 @@ export default function OfficeWorkbenchView({ officeId, items, offices, procedur
                         <p style={{ margin: '2px 0 0', fontSize: 13, color: 'var(--arib-slate)' }}>
                           {next
                             ? `Al completar este paso, el expediente avanzará automáticamente a ${officeName(next)}.`
-                            : 'Este es el último paso de la ruta. Al completar, el expediente retornará a Mesa de Partes para la notificación y entrega final al usuario.'}
+                            : skipsDireccion
+                              ? 'Este es el último paso de la ruta. Al completar, el expediente queda finalizado directamente por esta oficina (el trámite no pasa por Mesa de Partes).'
+                              : 'Este es el último paso de la ruta. Al completar, el expediente retornará a Mesa de Partes para la notificación y entrega final al usuario.'}
                         </p>
                       </div>
                     </div>

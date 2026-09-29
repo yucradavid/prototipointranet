@@ -15,8 +15,13 @@ export const DEFAULT_OFFICES = [
   // Presentes en las rutas actuales del prototipo y en el TUSNE 2026.
   {id:'jefatura_academica',   name:'Jefatura Académica',    short:'JA',    color:'#f59e0b', roleTitle:'Encargado',
    note:'TUSNE: "Jefe de Unidad Académica / Jefatura Académica". Aprueba o firma en múltiples trámites.'},
+  // `collectsPayment`: capacidad de cobrar/validar el pago del derecho de trámite (decisión
+  // 2026-09-28, pedido del Ing. sobre "sub-tesorerías"). No es un tipo de oficina aparte: es
+  // una capacidad que el Administrador puede activar en cualquier oficina existente o nueva
+  // (ej. Comisión de Admisión, Formación Continua) desde "Usuarios y catálogos → Oficinas",
+  // para que esa comisión cobre directamente los pagos de sus propios trámites.
   {id:'tesoreria',            name:'Tesorería',              short:'TES',   color:'#22c55e', roleTitle:'Jefe de Unidad Administrativa',
-   note:'TUSNE: "Caja de Unidad Administrativa". Valida y registra el pago del derecho de trámite.'},
+   note:'TUSNE: "Caja de Unidad Administrativa". Valida y registra el pago del derecho de trámite.', collectsPayment:true},
   {id:'biblioteca',           name:'Biblioteca',             short:'BIB',   color:'#d946ef', roleTitle:'Encargado',
    note:'TUSNE: "Área de Biblioteca". Atiende constancias de biblioteca.'},
   {id:'efsrt',                name:'EFSRT',                  short:'EFSRT', color:'#fb7185', roleTitle:'Encargado',
@@ -694,7 +699,11 @@ export const POSSIBLE_VIEWS_BY_ROLE = {
   docente:['portal','tracking'],
   secretaria:['work','book','tracking'],
   direccion:['work','book','tracking'],
-  oficina:['work','book','tracking'],
+  // 'caja' se lista como posible para 'oficina' (no otorgada por defecto — ver
+  // DEFAULT_ROLE_PERMISSIONS más abajo) para que el Administrador pueda concederla, vía
+  // personalización por oficina, a una sub-tesorería (ej. Comisión de Admisión) que cobra
+  // sus propios pagos y necesita ver su propio cierre de caja.
+  oficina:['work','book','caja','tracking'],
   admin:['control','workflow','catalog','book','caja','oficinas','tracking'],
 }
 
@@ -714,7 +723,7 @@ export const PERMISSIONS_CATALOG = [
   {key:'case.attend', label:'Atender y completar pasos en oficina'},
   {key:'case.observe', label:'Observar expedientes'},
   {key:'case.forward', label:'Redirigir a otra oficina'},
-  {key:'case.pay', label:'Registrar pagos en Tesorería'},
+  {key:'case.pay', label:'Registrar pagos del trámite (oficinas habilitadas para cobrar)'},
   {key:'case.pay_edit', label:'Corregir el monto de un pago ya registrado'},
   {key:'system.manage', label:'Administrar el sistema'},
   {key:'workflow.manage', label:'Administrar trámites y rutas'},
@@ -730,6 +739,48 @@ export const DEFAULT_ROLE_PERMISSIONS = {
   direccion:{views:['work','tracking'], permissions:['case.proveido','route.choose','case.view']},
   oficina:{views:['work','tracking'], permissions:['case.attend','case.observe','case.forward','case.pay','case.originate']},
   admin:{views:['control','workflow','catalog','book','caja','oficinas','tracking'], permissions:['system.manage','workflow.manage','users.manage','audit.view','reports.view','case.attend','case.observe','case.forward','case.pay','case.pay_edit','case.originate']},
+}
+
+// Módulos operativos por cuenta de oficina. Una subtesorería sigue siendo una
+// oficina con `collectsPayment:true`, pero ahora el Administrador puede activar o
+// desactivar los módulos de cada cuenta sin alterar a los demás usuarios de esa
+// dependencia.
+export const OFFICE_ACCESS_MODULES = [
+  {id:'work', label:'Bandeja de atención', description:'Recibir, observar y completar expedientes.', views:['work'], permissions:['case.attend','case.observe','case.forward','case.originate']},
+  {id:'caja', label:'Caja y pagos', description:'Registrar pagos y corregir sus datos.', views:['caja'], permissions:['case.pay','case.pay_edit'], treasuryOnly:true},
+  {id:'book', label:'Libro y auditoría', description:'Consultar el libro digital de movimientos.', views:['book'], permissions:['book.view']},
+  {id:'tracking', label:'Seguimiento', description:'Consultar el estado de los expedientes.', views:['tracking'], permissions:['case.view']},
+]
+
+export const defaultOfficeModuleAccess = office => OFFICE_ACCESS_MODULES
+  .filter(module => !module.treasuryOnly || office?.collectsPayment)
+  .map(module => module.id)
+
+export const normalizeOfficeModuleAccess = (office, value) => {
+  const available = new Set(defaultOfficeModuleAccess(office))
+  const requested = Array.isArray(value) ? value : defaultOfficeModuleAccess(office)
+  const normalized = [...new Set(requested)].filter(id => available.has(id))
+  // Una cuenta de oficina debe conservar al menos su bandeja operativa para que
+  // activar la cuenta no produzca un usuario sin ningún lugar donde trabajar.
+  if (available.has('work') && !normalized.includes('work')) normalized.unshift('work')
+  return normalized
+}
+
+export const resolveOfficeUserAccess = (user, baseViews = [], basePermissions = []) => {
+  if (user?.role !== 'oficina' || !Array.isArray(user.moduleAccess)) {
+    return {views: baseViews, permissions: basePermissions}
+  }
+  const enabled = new Set(user.moduleAccess)
+  const available = new Set(defaultOfficeModuleAccess(OFFICES.find(office => office.id === user.office)))
+  const controlledViews = new Set(OFFICE_ACCESS_MODULES.flatMap(module => module.views))
+  const controlledPermissions = new Set(OFFICE_ACCESS_MODULES.flatMap(module => module.permissions))
+  const allowedModules = OFFICE_ACCESS_MODULES.filter(module => available.has(module.id) && enabled.has(module.id))
+  const allowedViews = new Set(allowedModules.flatMap(module => module.views))
+  const allowedPermissions = new Set(allowedModules.flatMap(module => module.permissions))
+  return {
+    views: [...baseViews.filter(view => !controlledViews.has(view)), ...allowedViews],
+    permissions: [...basePermissions.filter(permission => !controlledPermissions.has(permission)), ...allowedPermissions],
+  }
 }
 
 // Igual que OFFICES/PROCEDURES: el prototipo permite a Administrador reconfigurar

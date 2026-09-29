@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { createVirtual,createPhysical,registerVirtual,issueProveido,observeAtOffice,correctObservation,completeOfficeStep,finalizeCase,validateWorkflowRoute,slaInfo,canDeleteOffice,canDeleteProcedure,authenticate,authenticateByEmail,redirectToOffice,routeProgress,validateRolePermissions,validateOfficePermissions,registerPayment,requiresPayment,editPayment } from '../src/workflowEngine.js'
-import { procedureById, DEFAULT_PROCEDURES, setProceduresCatalog, officeViews, officePerms, setOfficePermissionsCatalog, DEFAULT_OFFICE_PERMISSIONS, ROLE_PERMISSIONS } from '../src/data/catalogs.js'
+import { procedureById, DEFAULT_PROCEDURES, setProceduresCatalog, officeViews, officePerms, setOfficePermissionsCatalog, DEFAULT_OFFICE_PERMISSIONS, ROLE_PERMISSIONS, DEFAULT_OFFICES, setOfficesCatalog } from '../src/data/catalogs.js'
 
 const base={procedureId:'const_biblioteca',ownerProfile:'estudiante',solicitante:'Demo',asunto:'Constancia',adjuntos:[],numeroFolios:1,fecha:'01/01/2026',hora:'08:00'}
 
@@ -237,4 +237,80 @@ test('una oficina hereda el rol Oficina salvo que el admin la personalice',()=>{
 test('validateOfficePermissions exige al menos una vista, sin el bloqueo especial del rol admin',()=>{
  assert.deepEqual(validateOfficePermissions({views:['work'],permissions:[]}),[])
  assert.ok(validateOfficePermissions({views:[],permissions:[]}).length>0)
+})
+
+test('requiresPayment y registerPayment funcionan en cualquier oficina habilitada para cobrar, no solo Tesorería (sub-tesorería)',()=>{
+ try{
+  setOfficesCatalog(DEFAULT_OFFICES.map(o=>o.id==='comision_admision'?{...o,collectsPayment:true}:o))
+  const paidBase={...base,procedureId:'cert_modular'}
+  const r=registerVirtual(createVirtual(paidBase,6001,'08:00'),'08:05')
+  const p=issueProveido(r,{proveido:'PASE',routePlan:['comision_admision'],routeVersion:1},'08:10')
+  assert.equal(requiresPayment(p),true,'comision_admision ahora cobra pagos, igual que Tesorería')
+  assert.throws(()=>completeOfficeStep(p,{note:'Conforme'},'08:20'),/pago/i)
+  const paid=registerPayment(p,{monto:25,voucher:'OP-ADM'},'08:15')
+  assert.equal(paid.pago.estado,'PAGADO')
+  assert.equal(paid.pago.oficinaId,'comision_admision','el pago debe recordar qué oficina lo cobró')
+  assert.equal(paid.pago.registradoPor,'Comisión de Admisión')
+  const done=completeOfficeStep(paid,{note:'Conforme'},'08:20')
+  assert.equal(done.estado,'RESPUESTA_MESA','requiresDireccion sigue true por defecto: cierra por Mesa de Partes igual que siempre')
+
+  // Una oficina sin collectsPayment sigue sin poder cobrar, aun si el trámite tiene costo.
+  const r2=registerVirtual(createVirtual(paidBase,6002,'08:00'),'08:05')
+  const p2=issueProveido(r2,{proveido:'PASE',routePlan:['jefatura_academica'],routeVersion:1},'08:10')
+  assert.throws(()=>registerPayment(p2,{monto:25,voucher:'X'},'08:15'),/cobrar/)
+ }finally{setOfficesCatalog(DEFAULT_OFFICES)}
+})
+
+test('un trámite configurado sin Mesa de Partes ni Dirección va directo a la oficina y se cierra solo',()=>{
+ try{
+  setProceduresCatalog(DEFAULT_PROCEDURES.map(p=>p.id==='const_biblioteca'?{...p,requiresDireccion:false}:p))
+  const skipBase={...base,procedureId:'const_biblioteca'}
+  const wf={const_biblioteca:{route:['biblioteca'],version:3}}
+
+  const v=createVirtual(skipBase,8001,'08:00',null,wf)
+  assert.equal(v.estado,'EN_OFICINA','no debe pasar por SOLICITUD_VIRTUAL ni EN_DIRECCION')
+  assert.equal(v.oficinaActual,'biblioteca')
+  assert.equal(v.routeIndex,0)
+  assert.deepEqual(v.routePlan,['biblioteca'])
+  assert.equal(v.routeVersion,3)
+  assert.equal(routeProgress(v).total,1,'el stepper no debe incluir el prefijo de Mesa de Partes/Dirección')
+  assert.equal(routeProgress(v).completed,0)
+
+  const done=completeOfficeStep(v,{note:'Constancia emitida'},'08:10')
+  assert.equal(done.estado,'FINALIZADO','la última oficina debe finalizar directo, sin pasar por RESPUESTA_MESA')
+  assert.equal(done.oficinaActual,'biblioteca','no debe forzar el expediente de vuelta a mesa_partes')
+  assert.equal(routeProgress(done).completed,1)
+
+  // createPhysical (registro por Secretaría o por la propia oficina) respeta el mismo flag.
+  const ph=createPhysical(skipBase,8002,'08:05',null,'secretaria',wf)
+  assert.equal(ph.estado,'EN_OFICINA')
+  assert.equal(ph.oficinaActual,'biblioteca')
+
+  // Sin ruta publicada, no hay a dónde derivar: se usa el flujo estándar como resguardo.
+  const sinRuta=createVirtual(skipBase,8003,'08:00',null,{})
+  assert.equal(sinRuta.estado,'SOLICITUD_VIRTUAL')
+ }finally{setProceduresCatalog(DEFAULT_PROCEDURES)}
+})
+
+test('Mesa de Partes y Dirección se pueden configurar de forma independiente',()=>{
+ try{
+  const route={const_biblioteca:{route:['biblioteca'],version:4}}
+  const baseProcedure=DEFAULT_PROCEDURES.find(p=>p.id==='const_biblioteca')
+
+  setProceduresCatalog(DEFAULT_PROCEDURES.map(p=>p.id==='const_biblioteca'
+   ? {...p,requiresMesaPartes:true,requiresDireccion:false}
+   : p))
+  const soloMesa=createVirtual({...base,procedureId:'const_biblioteca'},8101,'08:00',null,route)
+  assert.equal(soloMesa.estado,'SOLICITUD_VIRTUAL')
+  const registrado=registerVirtual(soloMesa,'08:05','Secretaría',route)
+  assert.equal(registrado.estado,'EN_OFICINA')
+  assert.deepEqual(registrado.routePlan,['biblioteca'])
+
+  setProceduresCatalog(DEFAULT_PROCEDURES.map(p=>p.id==='const_biblioteca'
+   ? {...p,requiresMesaPartes:false,requiresDireccion:true}
+   : p))
+  const soloDireccion=createVirtual({...base,procedureId:'const_biblioteca'},8102,'08:00',null,route)
+  assert.equal(soloDireccion.estado,'EN_DIRECCION')
+  assert.deepEqual(routeProgress(soloDireccion).all,['direccion'])
+ }finally{setProceduresCatalog(DEFAULT_PROCEDURES)}
 })
